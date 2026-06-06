@@ -1,0 +1,172 @@
+<?php
+
+use PHPUnit\Framework\TestCase;
+use WpWoocommerceRaffleTicket\Admin\ReportPage;
+use WpWoocommerceRaffleTicket\Ticket\TicketRepository;
+
+// ── Fixtures ──────────────────────────────────────────────────────────────────
+
+class WcOrderReportStub extends WC_Order {
+	public function __construct(
+		private string $name,
+		private string $email
+	) {}
+	public function get_formatted_billing_full_name(): string {
+		return $this->name; }
+	public function get_billing_email(): string {
+		return $this->email; }
+}
+
+// ── Test case ─────────────────────────────────────────────────────────────────
+
+class ReportPageTest extends TestCase {
+
+	private TicketRepository $ticket_repo;
+	private ReportPage $report;
+
+	public function setUp(): void {
+		WP_Mock::setUp();
+		$this->ticket_repo = $this->createMock( TicketRepository::class );
+		$this->report      = new ReportPage( $this->ticket_repo );
+	}
+
+	public function tearDown(): void {
+		WP_Mock::tearDown();
+	}
+
+	private function openTempStream() {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
+		return fopen( 'php://temp', 'w+' );
+	}
+
+	private function readStream( $stream ): string {
+		rewind( $stream );
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+		$content = stream_get_contents( $stream );
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+		fclose( $stream );
+		return $content;
+	}
+
+	/** @test */
+	public function write_csv_outputs_header_row(): void {
+		$this->ticket_repo->method( 'findAll' )->willReturn( array() );
+
+		WP_Mock::userFunction( '__', array( 'return_arg' => 0 ) );
+
+		$stream = $this->openTempStream();
+		$this->report->writeCsv( $stream );
+		$content = $this->readStream( $stream );
+
+		$this->assertStringContainsString( 'Order ID', $content );
+		$this->assertStringContainsString( 'Customer Name', $content );
+		$this->assertStringContainsString( 'Customer Email', $content );
+		$this->assertStringContainsString( 'Product Name', $content );
+		$this->assertStringContainsString( 'Ticket Number', $content );
+		$this->assertStringContainsString( 'Purchase Date', $content );
+	}
+
+	/** @test */
+	public function write_csv_outputs_one_data_row_per_ticket(): void {
+		$rows = array(
+			(object) array(
+				'order_id'      => 10,
+				'product_name'  => 'My Raffle',
+				'ticket_number' => 'R-001',
+				'created_at'    => '2025-01-01 10:00:00',
+			),
+			(object) array(
+				'order_id'      => 10,
+				'product_name'  => 'My Raffle',
+				'ticket_number' => 'R-002',
+				'created_at'    => '2025-01-01 10:00:01',
+			),
+		);
+		$this->ticket_repo->method( 'findAll' )->willReturn( $rows );
+
+		$order = new WcOrderReportStub( 'Jane Doe', 'jane@example.com' );
+		WP_Mock::userFunction( 'wc_get_order', array( 'return' => $order ) );
+		WP_Mock::userFunction( '__', array( 'return_arg' => 0 ) );
+
+		$stream = $this->openTempStream();
+		$this->report->writeCsv( $stream );
+		$content = $this->readStream( $stream );
+
+		$lines = array_filter( explode( "\n", trim( $content ) ) );
+		// 1 header + 2 data rows.
+		$this->assertCount( 3, $lines );
+	}
+
+	/** @test */
+	public function write_csv_includes_customer_name_and_email(): void {
+		$rows = array(
+			(object) array(
+				'order_id'      => 5,
+				'product_name'  => 'Lucky Draw',
+				'ticket_number' => 'LD-001',
+				'created_at'    => '2025-03-10 09:00:00',
+			),
+		);
+		$this->ticket_repo->method( 'findAll' )->willReturn( $rows );
+
+		$order = new WcOrderReportStub( 'Alice Smith', 'alice@test.com' );
+		WP_Mock::userFunction( 'wc_get_order', array( 'return' => $order ) );
+		WP_Mock::userFunction( '__', array( 'return_arg' => 0 ) );
+
+		$stream = $this->openTempStream();
+		$this->report->writeCsv( $stream );
+		$content = $this->readStream( $stream );
+
+		$this->assertStringContainsString( 'Alice Smith', $content );
+		$this->assertStringContainsString( 'alice@test.com', $content );
+		$this->assertStringContainsString( 'LD-001', $content );
+	}
+
+	/** @test */
+	public function write_csv_handles_missing_order_gracefully(): void {
+		$rows = array(
+			(object) array(
+				'order_id'      => 99,
+				'product_name'  => 'Raffle',
+				'ticket_number' => 'R-001',
+				'created_at'    => '2025-01-01 10:00:00',
+			),
+		);
+		$this->ticket_repo->method( 'findAll' )->willReturn( $rows );
+
+		// wc_get_order returns false — order not found.
+		WP_Mock::userFunction( 'wc_get_order', array( 'return' => false ) );
+		WP_Mock::userFunction( '__', array( 'return_arg' => 0 ) );
+
+		$stream = $this->openTempStream();
+		// Should not throw.
+		$this->report->writeCsv( $stream );
+		$content = $this->readStream( $stream );
+
+		// Data row still present with empty customer fields.
+		$this->assertStringContainsString( 'R-001', $content );
+	}
+
+	/** @test */
+	public function register_adds_submenu_page_under_woocommerce(): void {
+		WP_Mock::userFunction( 'esc_html__', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction(
+			'add_submenu_page',
+			array(
+				'times' => 1,
+				'args'  => array(
+					'woocommerce',
+					\Mockery::any(),
+					\Mockery::any(),
+					'manage_woocommerce',
+					'raffle-ticket-report',
+					\Mockery::any(),
+				),
+			)
+		);
+
+		$this->report->register();
+
+		$this->addToAssertionCount( 1 );
+	}
+}

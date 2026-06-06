@@ -1,0 +1,84 @@
+version: 2.1
+
+orbs:
+  gh: circleci/github-cli@2.7.2
+
+workflows:
+  build:
+    jobs:
+      - build
+      - approve-release:
+          type: approval
+          requires:
+            - build
+          filters:
+            branches:
+              only: main
+      - release:
+          requires:
+            - approve-release
+          filters:
+            branches:
+              only: main
+
+jobs:
+  build:
+    environment:
+      ORG_GRADLE_PROJECT_buildNumber: << pipeline.number >>
+    machine:
+      image: ubuntu-2404:current
+    resource_class: large
+    steps:
+      - run:
+          name: Prepare Agent
+          command: |
+            sudo apt update
+            sudo apt install php-cli php-zip php-curl php-mbstring php-xml unzip git -y
+            curl -sS https://getcomposer.org/installer | php
+            sudo mv composer.phar /usr/local/bin/composer
+      - checkout
+      - restore_cache:
+          keys:
+            - v1-gradle-{{ checksum "build.gradle" }}
+            - v1-gradle-
+      - restore_cache:
+          keys:
+            - v1-composer-{{ checksum "composer.json" }}
+            - v1-composer-
+      - run:
+          name: Give Executable Power
+          command: "chmod +x gradlew"
+      - run:
+          name: Gradle build
+          command: ./gradlew wpWoocommerceRaffleTicketDistZip
+      - run:
+          name: Capture version
+          command: ./gradlew properties -q | grep "^version:" | awk '{print $2}' > build/distributions/VERSION
+      - save_cache:
+          key: v1-gradle-{{ checksum "build.gradle" }}
+          paths:
+            - ~/.gradle
+      - store_artifacts:
+          path: build/distributions
+      - persist_to_workspace:
+          root: .
+          paths:
+            - build/distributions
+
+  release:
+    machine:
+      image: ubuntu-2404:current
+    resource_class: medium
+    steps:
+      - attach_workspace:
+          at: .
+      - gh/install
+      - run:
+          name: Create GitHub Release
+          command: |
+            VERSION=$(cat build/distributions/VERSION)
+            gh release create "v${VERSION}" \
+              build/distributions/*.zip \
+              --repo "${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}" \
+              --title "v${VERSION}" \
+              --generate-notes

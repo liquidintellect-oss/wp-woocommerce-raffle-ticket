@@ -1,0 +1,210 @@
+<?xml version="1.0"?>
+<ruleset name="WP WooCommerce Raffle Ticket">
+    <description>WordPress Coding Standards for WP WooCommerce Raffle Ticket</description>
+
+    <!-- Files to check -->
+    <file>wp-woocommerce-raffle-ticket.php</file>
+    <file>includes/</file>
+    <file>tests/</file>
+
+    <!-- Only check PHP files -->
+    <arg name="extensions" value="php"/>
+
+    <!-- Show progress and use colors -->
+    <arg value="ps"/>
+    <arg name="colors"/>
+
+    <!-- WordPress ruleset -->
+    <rule ref="WordPress"/>
+
+    <!-- Plugin requires PHP 8.1+ -->
+    <config name="testVersion" value="8.1-"/>
+
+    <!-- Text domain for i18n checks -->
+    <rule ref="WordPress.WP.I18n">
+        <properties>
+            <property name="text_domain" type="array">
+                <element value="wp-woocommerce-raffle-ticket"/>
+            </property>
+        </properties>
+    </rule>
+
+    <!--
+        Test-file exclusions.
+
+        PHPUnit test files intentionally differ from WordPress production-code
+        conventions in several ways:
+
+          - PascalCase filenames  (PSR-4 autoloading / PHPUnit standard)
+          - Multiple classes per file  (inline spy/stub fixtures alongside the
+            test case class)
+          - Unused parameters on $wpdb spy stubs  (must match real $wpdb API
+            signatures exactly)
+          - /** @test */ single-line annotations  (PHPUnit annotation style;
+            no prose short-description needed)
+          - Section-marker comments  (// ── Fixtures ── etc.) above setUp /
+            tearDown instead of /** */ docblocks — common in PHPUnit suites
+          - Spy-class properties/methods without full docblocks  (test-only
+            infrastructure; type information is in the declarations)
+          - Empty catch blocks containing only a comment  (expected-redirect
+            pattern used in handler tests)
+          - @package tag not needed in bootstrap / test-case files
+    -->
+
+    <!--
+        File / class naming.
+
+        PSR-4 autoloading (used by both the plugin's runtime autoloader and
+        Composer for tests) requires PascalCase filenames that mirror the class
+        name.  WordPress's "class-foo-bar.php" convention is incompatible with
+        PSR-4, so the filename rules are relaxed for both directories.
+    -->
+    <rule ref="WordPress.Files.FileName.NotHyphenatedLowercase">
+        <exclude-pattern>includes/*</exclude-pattern>
+        <exclude-pattern>tests/*</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.Files.FileName.InvalidClassFileName">
+        <exclude-pattern>includes/*</exclude-pattern>
+        <exclude-pattern>tests/*</exclude-pattern>
+    </rule>
+
+    <!--
+        Method naming in PSR-4 classes.
+
+        WordPress coding standards mandate snake_case function names.  This
+        plugin uses PSR-4 namespaced classes with camelCase method names
+        following PSR-1/PSR-2.  The naming rule is relaxed for includes/ so
+        that methods like getPrefix(), isEnabled(), nextSequence() etc. are
+        accepted without modification.
+    -->
+    <rule ref="WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid">
+        <exclude-pattern>includes/*</exclude-pattern>
+    </rule>
+
+    <!-- Multiple classes per file is standard for inline test fixtures. -->
+    <rule ref="Generic.Files.OneObjectStructurePerFile">
+        <exclude-pattern>tests/*</exclude-pattern>
+    </rule>
+
+    <!-- Spy-stub methods must mirror the real $wpdb API, so parameters that
+         are not used in the stub body are unavoidable. -->
+    <rule ref="Generic.CodeAnalysis.UnusedFunctionParameter">
+        <exclude-pattern>tests/*</exclude-pattern>
+    </rule>
+
+    <!-- @package tag is not meaningful in test bootstrap / test-case files. -->
+    <rule ref="Squiz.Commenting.FileComment.MissingPackageTag">
+        <exclude-pattern>tests/*</exclude-pattern>
+    </rule>
+
+    <!-- File docblock is not required in test files (PHPUnit convention). -->
+    <rule ref="Squiz.Commenting.FileComment.Missing">
+        <exclude-pattern>tests/*</exclude-pattern>
+    </rule>
+
+    <!-- Class docblock is not required in test files. -->
+    <rule ref="Squiz.Commenting.ClassComment.Missing">
+        <exclude-pattern>tests/*</exclude-pattern>
+    </rule>
+
+    <!--
+        Inline associative arrays are common in PHPUnit / WP_Mock test calls
+        (e.g., WP_Mock::userFunction('fn', ['args' => [...], 'return' => x])).
+        Requiring every such array to be multi-line would hurt readability in
+        test files.
+    -->
+    <rule ref="WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound">
+        <exclude-pattern>tests/*</exclude-pattern>
+    </rule>
+
+    <!-- Spy-class properties are typed in the declaration; a separate
+         /** @var … */ docblock adds no value in test fixtures. -->
+    <rule ref="Squiz.Commenting.VariableComment.Missing">
+        <exclude-pattern>tests/*</exclude-pattern>
+    </rule>
+
+    <!-- Spy-stub methods don't need prose docblocks; their signatures already
+         document the contract. -->
+    <rule ref="Squiz.Commenting.FunctionComment.Missing">
+        <exclude-pattern>tests/*</exclude-pattern>
+    </rule>
+
+    <!-- Existing partial docblocks (e.g., /** @return … */ without @param)
+         are acceptable in test fixture helpers. -->
+    <rule ref="Squiz.Commenting.FunctionComment.MissingParamTag">
+        <exclude-pattern>tests/*</exclude-pattern>
+    </rule>
+
+    <!-- /** @test */ is the canonical PHPUnit single-annotation style;
+         no prose short-description is required. -->
+    <rule ref="Generic.Commenting.DocComment.MissingShort">
+        <exclude-pattern>tests/*</exclude-pattern>
+    </rule>
+
+    <!-- Section-marker // ── … comments above setUp/tearDown are fine. -->
+    <rule ref="Squiz.Commenting.ClassComment.WrongStyle">
+        <exclude-pattern>tests/*</exclude-pattern>
+    </rule>
+    <rule ref="Squiz.Commenting.FunctionComment.WrongStyle">
+        <exclude-pattern>tests/*</exclude-pattern>
+    </rule>
+
+    <!-- Expected-redirect catch blocks intentionally contain only a comment
+         explaining why the exception is swallowed. -->
+    <rule ref="Generic.CodeAnalysis.EmptyStatement.DetectedCatch">
+        <exclude-pattern>tests/*</exclude-pattern>
+    </rule>
+
+    <!-- strip_tags() in the test-only sanitize_text_field stub is fine. -->
+    <rule ref="WordPress.WP.AlternativeFunctions">
+        <exclude-pattern>tests/bootstrap.php</exclude-pattern>
+    </rule>
+
+    <!--
+        Method naming in test fixture / spy classes.
+
+        Spy classes (WpdbSequenceSpy etc.) are PHP-idiomatic: they use
+        camelCase setter names like setGetVarReturn() because they mirror
+        PHPUnit's own naming style and the IDE completion is clearer.
+    -->
+    <rule ref="WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid">
+        <exclude-pattern>tests/*</exclude-pattern>
+    </rule>
+
+    <!--
+        bootstrap.php must stub dbDelta() with the exact WordPress function
+        name, which is camelCase (not snake_case).
+    -->
+    <rule ref="WordPress.NamingConventions.ValidFunctionName.FunctionNameInvalid">
+        <exclude-pattern>tests/bootstrap.php</exclude-pattern>
+    </rule>
+
+    <!--
+        bootstrap.php intentionally mixes function stubs and class stubs so
+        that all test-suite dependencies are defined in a single file.  The
+        rule requiring pure function files or pure OO files does not apply.
+    -->
+    <rule ref="Universal.Files.SeparateFunctionsFromOO.Mixed">
+        <exclude-pattern>tests/bootstrap.php</exclude-pattern>
+    </rule>
+
+    <!--
+        Inline test comments like "// qty = 3" or "// customer_id = 77" don't
+        need trailing punctuation; they are value annotations, not prose.
+    -->
+    <rule ref="Squiz.Commenting.InlineComment.InvalidEndChar">
+        <exclude-pattern>tests/*</exclude-pattern>
+    </rule>
+
+    <!--
+        manage_woocommerce is a WooCommerce built-in capability.  Register it
+        as a known custom capability so PHPCS doesn't flag it as unknown.
+    -->
+    <rule ref="WordPress.WP.Capabilities">
+        <properties>
+            <property name="custom_capabilities" type="array">
+                <element value="manage_woocommerce"/>
+            </property>
+        </properties>
+    </rule>
+</ruleset>

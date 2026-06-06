@@ -1,0 +1,72 @@
+plugins {
+    id 'distribution'
+    id 'com.diffplug.spotless'
+}
+import org.apache.tools.ant.filters.ReplaceTokens
+
+def branchName = System.getenv('CIRCLE_BRANCH')
+    ?: 'git rev-parse --abbrev-ref HEAD'.execute().text.trim()
+
+def issueSuffix = ''
+if (branchName && branchName != 'main') {
+    def m = (branchName =~ /(?:^|\/)(gh-\d+)/)
+    if (m) issueSuffix = "-${m[0][1]}"
+}
+
+version = "1.0.0.${buildNumber}${issueSuffix}"
+
+def nodeExe = ['which', 'node'].execute().text.trim()
+
+spotless {
+    groovyGradle {
+        target '**/*.gradle'
+        leadingTabsToSpaces(4)
+    }
+    yaml {
+        target '**/*.yml'
+        prettier().nodeExecutable(nodeExe)
+    }
+}
+
+distributions {
+    wpWoocommerceRaffleTicket {
+        contents {
+            distributionBaseName = 'wp-woocommerce-raffle-ticket'
+            from(projectDir) {
+                exclude '**/*.gradle'
+                exclude '.gradle'
+                exclude 'gradle*'
+                exclude 'build'
+                exclude '.circleci'
+                exclude '.claude'
+                exclude '.idea'
+                exclude '.gitignore'
+                exclude 'vendor'
+                exclude 'composer.json'
+                exclude 'composer.lock'
+                exclude 'wp-woocommerce-raffle-ticket.php'
+            } into "/${project.name}"
+            from(projectDir) {
+                include 'wp-woocommerce-raffle-ticket.php'
+                filter(ReplaceTokens, tokens: [projectVersion: project.version.toString()])
+            } into "/${project.name}"
+        }
+    }
+}
+
+tasks.register('composerInstall', Exec) {
+    commandLine 'composer', 'install', '--no-interaction', '--prefer-dist', '--no-progress'
+}
+
+tasks.register('phpcs', Exec) {
+    dependsOn composerInstall
+    commandLine 'vendor/bin/phpcs'
+}
+
+tasks.named('wpWoocommerceRaffleTicketDistZip') {
+    dependsOn phpcs
+}
+
+tasks.named('wrapper') {
+    gradleVersion = '9.5.1'
+}
