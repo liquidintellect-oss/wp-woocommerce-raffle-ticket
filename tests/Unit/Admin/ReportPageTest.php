@@ -12,9 +12,11 @@ class WcOrderReportStub extends WC_Order {
 		private string $email
 	) {}
 	public function get_formatted_billing_full_name(): string {
-		return $this->name; }
+		return $this->name;
+	}
 	public function get_billing_email(): string {
-		return $this->email; }
+		return $this->email;
+	}
 }
 
 // ── Test case ─────────────────────────────────────────────────────────────────
@@ -32,6 +34,7 @@ class ReportPageTest extends TestCase {
 
 	public function tearDown(): void {
 		WP_Mock::tearDown();
+		$_GET = array();
 	}
 
 	private function openTempStream() {
@@ -47,6 +50,8 @@ class ReportPageTest extends TestCase {
 		fclose( $stream );
 		return $content;
 	}
+
+	// ── writeCsv() ────────────────────────────────────────────────────────────
 
 	/** @test */
 	public function write_csv_outputs_header_row(): void {
@@ -147,6 +152,8 @@ class ReportPageTest extends TestCase {
 		$this->assertStringContainsString( 'R-001', $content );
 	}
 
+	// ── register() ────────────────────────────────────────────────────────────
+
 	/** @test */
 	public function register_adds_submenu_page_under_woocommerce(): void {
 		WP_Mock::userFunction( 'esc_html__', array( 'return_arg' => 0 ) );
@@ -168,5 +175,93 @@ class ReportPageTest extends TestCase {
 		$this->report->register();
 
 		$this->addToAssertionCount( 1 );
+	}
+
+	// ── maybeStreamCsv() ──────────────────────────────────────────────────────
+
+	/** @test */
+	public function maybe_stream_csv_does_nothing_when_page_param_absent(): void {
+		$this->expectNotToPerformAssertions();
+
+		$_GET = array();
+
+		// If we get here without calling streamCsv, the test passes.
+		$this->report->maybeStreamCsv();
+	}
+
+	/** @test */
+	public function maybe_stream_csv_does_nothing_when_action_param_absent(): void {
+		$this->expectNotToPerformAssertions();
+
+		$_GET = array( 'page' => 'raffle-ticket-report' );
+
+		$this->report->maybeStreamCsv();
+	}
+
+	/** @test */
+	public function maybe_stream_csv_does_nothing_for_different_page(): void {
+		$this->expectNotToPerformAssertions();
+
+		$_GET = array(
+			'page'   => 'some-other-page',
+			'action' => 'download',
+		);
+
+		$this->report->maybeStreamCsv();
+	}
+
+	/** @test */
+	public function maybe_stream_csv_dies_on_invalid_nonce(): void {
+		$_GET = array(
+			'page'     => 'raffle-ticket-report',
+			'action'   => 'download',
+			'_wpnonce' => 'bad',
+		);
+
+		WP_Mock::userFunction( 'sanitize_text_field', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'wp_unslash', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'wp_verify_nonce', array( 'return' => false ) );
+		WP_Mock::userFunction( 'esc_html__', array( 'return_arg' => 0 ) );
+		// Make wp_die throw so execution stops, mirroring real WordPress behaviour.
+		WP_Mock::userFunction(
+			'wp_die',
+			array(
+				'times'  => 1,
+				'return' => static function () {
+					throw new \RuntimeException( 'wp_die' );
+				},
+			)
+		);
+
+		$this->expectException( \RuntimeException::class );
+		$this->report->maybeStreamCsv();
+	}
+
+	/** @test */
+	public function maybe_stream_csv_dies_when_user_lacks_capability(): void {
+		$_GET = array(
+			'page'     => 'raffle-ticket-report',
+			'action'   => 'download',
+			'_wpnonce' => 'valid',
+		);
+
+		WP_Mock::userFunction( 'sanitize_text_field', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'wp_unslash', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'wp_verify_nonce', array( 'return' => true ) );
+		WP_Mock::userFunction( 'current_user_can', array( 'return' => false ) );
+		WP_Mock::userFunction( 'esc_html__', array( 'return_arg' => 0 ) );
+		// Make wp_die throw so execution stops, mirroring real WordPress behaviour.
+		WP_Mock::userFunction(
+			'wp_die',
+			array(
+				'times'  => 1,
+				'return' => static function () {
+					throw new \RuntimeException( 'wp_die' );
+				},
+			)
+		);
+
+		$this->expectException( \RuntimeException::class );
+		$this->report->maybeStreamCsv();
 	}
 }

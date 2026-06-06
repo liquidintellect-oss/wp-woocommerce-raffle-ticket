@@ -19,6 +19,11 @@ use WpWoocommerceRaffleTicket\Ticket\TicketRepository;
  * Registers a WooCommerce sub-menu page that provides a CSV download of all
  * raffle ticket assignments, including customer name, email, product, ticket
  * number, and purchase date.
+ *
+ * The CSV stream is initiated from `admin_init` — before WordPress outputs any
+ * HTML — so that the Content-Type and Content-Disposition headers are sent
+ * cleanly.  The page renderer itself only ever outputs the HTML landing page
+ * with the download button.
  */
 class ReportPage {
 
@@ -46,28 +51,52 @@ class ReportPage {
 	}
 
 	/**
-	 * Render the report page or stream the CSV download.
+	 * Intercept download requests during admin_init before any HTML is output.
 	 *
-	 * When the `action=download` query arg is present and the nonce is valid,
-	 * this method streams the CSV file and exits.  Otherwise it renders the
-	 * standard HTML admin page with the download button.
+	 * Called on the `admin_init` hook.  When the current request targets our
+	 * report page with `action=download` and a valid nonce, this method streams
+	 * the CSV and exits, preventing WordPress from rendering the admin shell.
+	 *
+	 * @return void
+	 */
+	public function maybeStreamCsv(): void {
+		// Only act on our own page.
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended
+		if (
+			! isset( $_GET['page'] ) ||
+			'raffle-ticket-report' !== $_GET['page'] ||
+			! isset( $_GET['action'] ) ||
+			'download' !== $_GET['action']
+		) {
+			// phpcs:enable WordPress.Security.NonceVerification.Recommended
+			return;
+		}
+
+		$nonce = isset( $_GET['_wpnonce'] )
+			? sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) )
+			: '';
+
+		if ( ! wp_verify_nonce( $nonce, 'raffle_ticket_report_download' ) ) {
+			wp_die( esc_html__( 'Security check failed.', 'wp-woocommerce-raffle-ticket' ) );
+		}
+
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			wp_die( esc_html__( 'You do not have permission to download this report.', 'wp-woocommerce-raffle-ticket' ) );
+		}
+
+		$this->streamCsv();
+		exit;
+	}
+
+	/**
+	 * Render the HTML landing page with the download button.
+	 *
+	 * By the time WordPress calls this callback, the admin shell HTML has
+	 * already been output, so no CSV streaming happens here.
 	 *
 	 * @return void
 	 */
 	public function render(): void {
-		// phpcs:disable WordPress.Security.NonceVerification.Recommended
-		if ( isset( $_GET['action'] ) && 'download' === $_GET['action'] ) {
-			// phpcs:enable WordPress.Security.NonceVerification.Recommended
-			$nonce = isset( $_GET['_wpnonce'] )
-				? sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) )
-				: '';
-			if ( ! wp_verify_nonce( $nonce, 'raffle_ticket_report_download' ) ) {
-				wp_die( esc_html__( 'Security check failed.', 'wp-woocommerce-raffle-ticket' ) );
-			}
-			$this->streamCsv();
-			exit;
-		}
-
 		$download_url = wp_nonce_url(
 			admin_url( 'admin.php?page=raffle-ticket-report&action=download' ),
 			'raffle_ticket_report_download'
@@ -87,6 +116,9 @@ class ReportPage {
 	/**
 	 * Send CSV headers and stream the report to the browser.
 	 *
+	 * Only called from maybeStreamCsv() during admin_init, before any page
+	 * output, so headers can be sent cleanly.
+	 *
 	 * @return void
 	 */
 	public function streamCsv(): void {
@@ -101,7 +133,7 @@ class ReportPage {
 	/**
 	 * Send HTTP headers for a CSV file download.
 	 *
-	 * @param string $filename The suggested filename for the download.
+	 * @param string $filename The suggested download filename.
 	 *
 	 * @return void
 	 */

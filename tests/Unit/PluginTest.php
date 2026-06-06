@@ -105,4 +105,16 @@ class PluginTest extends TestCase {
 
 		$this->addToAssertionCount( 1 );
 	}
+
+	/** @test */
+	public function register_hooks_admin_init_for_csv_download(): void {
+		WP_Mock::expectActionAdded(
+			'admin_init',
+			array( new AnyInstance( ReportPage::class ), 'maybeStreamCsv' )
+		);
+
+		( new Plugin() )->register();
+
+		$this->addToAssertionCount( 1 );
+	}
 }
