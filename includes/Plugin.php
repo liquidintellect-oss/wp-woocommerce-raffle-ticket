@@ -56,5 +56,9 @@ class Plugin {
 
 		// Admin report / CSV export.
 		add_action( 'admin_menu', array( $report_page, 'register' ) );
+
+		// Stream CSV during admin_init — before WordPress outputs any HTML —
+		// so that Content-Type / Content-Disposition headers are sent cleanly.
+		add_action( 'admin_init', array( $report_page, 'maybeStreamCsv' ) );
 	}
 }

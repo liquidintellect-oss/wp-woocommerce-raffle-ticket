@@ -6,8 +6,7 @@
  * Version:           @projectVersion@
  * Requires at least: 6.4
  * Requires PHP:      8.1
- * Author:            Liquid Intellect
- * Author URI:        https://liquidintellect.com
+ * Author:            Liquid Intellect, Inc. - OSS
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       wp-woocommerce-raffle-ticket
