@@ -50,7 +50,9 @@ jobs:
           command: "chmod +x gradlew"
       - run:
           name: Gradle build
-          command: ./gradlew wpWoocommerceRaffleTicketDistZip
+          command: ./gradlew build
+      - store_test_results:
+          path: build/test-results
       - run:
           name: Capture version
           command: ./gradlew properties -q | grep "^version:" | awk '{print $2}' > build/distributions/VERSION

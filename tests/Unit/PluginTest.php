@@ -2,6 +2,7 @@
 
 use PHPUnit\Framework\TestCase;
 use WP_Mock\Matcher\AnyInstance;
+use WpWoocommerceRaffleTicket\Admin\PluginSettings;
 use WpWoocommerceRaffleTicket\Admin\ReportPage;
 use WpWoocommerceRaffleTicket\Order\OrderDisplay;
 use WpWoocommerceRaffleTicket\Order\OrderHandler;
@@ -107,10 +108,48 @@ class PluginTest extends TestCase {
 	}
 
 	/** @test */
+	public function register_hooks_woocommerce_order_status_completed(): void {
+		WP_Mock::expectActionAdded(
+			'woocommerce_order_status_completed',
+			array( new AnyInstance( OrderHandler::class ), 'handle' ),
+			10,
+			1
+		);
+
+		( new Plugin() )->register();
+
+		$this->addToAssertionCount( 1 );
+	}
+
+	/** @test */
 	public function register_hooks_admin_init_for_csv_download(): void {
 		WP_Mock::expectActionAdded(
 			'admin_init',
 			array( new AnyInstance( ReportPage::class ), 'maybeStreamCsv' )
+		);
+
+		( new Plugin() )->register();
+
+		$this->addToAssertionCount( 1 );
+	}
+
+	/** @test */
+	public function register_hooks_admin_init_for_retroactive_assignment(): void {
+		WP_Mock::expectActionAdded(
+			'admin_init',
+			array( new AnyInstance( ReportPage::class ), 'maybeAssignRetroactive' )
+		);
+
+		( new Plugin() )->register();
+
+		$this->addToAssertionCount( 1 );
+	}
+
+	/** @test */
+	public function register_hooks_plugin_settings_filters(): void {
+		WP_Mock::expectFilterAdded(
+			'woocommerce_get_sections_products',
+			array( new AnyInstance( PluginSettings::class ), 'addSection' )
 		);
 
 		( new Plugin() )->register();
