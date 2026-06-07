@@ -31,12 +31,14 @@ class ReportPage {
 	/**
 	 * Constructor.
 	 *
-	 * @param TicketRepository $ticket_repo   Ticket retrieval layer.
+	 * @param TicketRepository $ticket_repo Ticket retrieval layer.
 	 * @param OrderHandler     $order_handler Order handler for retroactive assignment.
+	 * @param string           $label       Configurable display label (e.g. "Raffle Tickets").
 	 */
 	public function __construct(
 		private TicketRepository $ticket_repo,
-		private OrderHandler $order_handler
+		private OrderHandler $order_handler,
+		private string $label
 	) {}
 
 	/**
@@ -45,10 +47,13 @@ class ReportPage {
 	 * @return void
 	 */
 	public function register(): void {
+		/* translators: %s: configurable ticket label, e.g. "Raffle Tickets" */
+		$page_title = esc_html( sprintf( __( '%s Report', 'wp-woocommerce-raffle-ticket' ), $this->label ) );
+
 		add_submenu_page(
 			'woocommerce',
-			esc_html__( 'Raffle Ticket Report', 'wp-woocommerce-raffle-ticket' ),
-			esc_html__( 'Raffle Tickets', 'wp-woocommerce-raffle-ticket' ),
+			$page_title,
+			esc_html( $this->label ),
 			'manage_woocommerce',
 			'raffle-ticket-report',
 			array( $this, 'render' )
@@ -180,7 +185,11 @@ class ReportPage {
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
 		?>
 		<div class="wrap">
-			<h1><?php esc_html_e( 'Raffle Ticket Report', 'wp-woocommerce-raffle-ticket' ); ?></h1>
+			<h1>			<?php
+			/* translators: %s: configurable ticket label, e.g. "Raffle Tickets" */
+			echo esc_html( sprintf( __( '%s Report', 'wp-woocommerce-raffle-ticket' ), $this->label ) );
+			?>
+			</h1>
 			<?php if ( null !== $assigned ) : ?>
 				<div class="notice notice-success is-dismissible">
 					<p>

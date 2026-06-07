@@ -33,13 +33,14 @@ class Plugin {
 	 * @return void
 	 */
 	public function register(): void {
-		$ticket_repo     = new TicketRepository();
-		$seq_repo        = new SequenceRepository();
-		$generator       = new TicketNumberGenerator();
-		$order_handler   = new OrderHandler( $ticket_repo, $seq_repo, $generator );
-		$order_display   = new OrderDisplay( $ticket_repo );
-		$meta_box        = new ProductMetaBox();
-		$report_page     = new ReportPage( $ticket_repo, $order_handler );
+		$ticket_repo   = new TicketRepository();
+		$seq_repo      = new SequenceRepository();
+		$generator     = new TicketNumberGenerator();
+		$label           = PluginSettings::getLabel();
+		$order_handler = new OrderHandler( $ticket_repo, $seq_repo, $generator );
+		$order_display   = new OrderDisplay( $ticket_repo, $label );
+		$meta_box        = new ProductMetaBox( $label );
+		$report_page     = new ReportPage( $ticket_repo, $order_handler, $label );
 		$plugin_settings = new PluginSettings();
 
 		// Assign tickets when payment is received.

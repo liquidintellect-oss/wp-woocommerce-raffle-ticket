@@ -40,9 +40,9 @@ class ReportPageTest extends TestCase {
 
 	public function setUp(): void {
 		WP_Mock::setUp();
-		$this->ticket_repo   = $this->createMock( TicketRepository::class );
+		$this->ticket_repo = $this->createMock( TicketRepository::class );
 		$this->order_handler = $this->createMock( OrderHandler::class );
-		$this->report        = new ReportPage( $this->ticket_repo, $this->order_handler );
+		$this->report        = new ReportPage( $this->ticket_repo, $this->order_handler, 'Raffle Tickets' );
 	}
 
 	public function tearDown(): void {
@@ -169,7 +169,8 @@ class ReportPageTest extends TestCase {
 
 	/** @test */
 	public function register_adds_submenu_page_under_woocommerce(): void {
-		WP_Mock::userFunction( 'esc_html__', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( '__', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'esc_html', array( 'return_arg' => 0 ) );
 		WP_Mock::userFunction(
 			'add_submenu_page',
 			array(

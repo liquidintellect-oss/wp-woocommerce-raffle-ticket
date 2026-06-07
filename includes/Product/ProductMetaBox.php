@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Class ProductMetaBox
  *
- * Adds a "Raffle Ticket Settings" meta box to the WooCommerce product editor,
+ * Adds a "{label} Settings" meta box to the WooCommerce product editor,
  * allowing store admins to enable ticket assignment and configure the prefix
  * and sequence range on a per-product basis.
  */
@@ -27,14 +27,24 @@ class ProductMetaBox {
 	const NONCE_FIELD = '_raffle_ticket_nonce';
 
 	/**
+	 * Constructor.
+	 *
+	 * @param string $label Configurable display label (e.g. "Raffle Tickets").
+	 */
+	public function __construct( private string $label ) {}
+
+	/**
 	 * Register the meta box on the product edit screen.
 	 *
 	 * @return void
 	 */
 	public function register(): void {
+		/* translators: %s: configurable ticket label, e.g. "Raffle Tickets" */
+		$meta_box_title = esc_html( sprintf( __( '%s Settings', 'wp-woocommerce-raffle-ticket' ), $this->label ) );
+
 		add_meta_box(
 			'raffle_ticket_settings',
-			esc_html__( 'Raffle Ticket Settings', 'wp-woocommerce-raffle-ticket' ),
+			$meta_box_title,
 			array( $this, 'render' ),
 			'product',
 			'normal',
@@ -62,7 +72,10 @@ class ProductMetaBox {
 					value="1"
 					<?php checked( $settings->isEnabled() ); ?>
 				/>
-				<?php esc_html_e( 'Enable raffle ticket assignment for this product', 'wp-woocommerce-raffle-ticket' ); ?>
+				<?php
+				/* translators: %s: configurable ticket label, e.g. "Raffle Tickets" */
+				echo esc_html( sprintf( __( 'Enable %s assignment for this product', 'wp-woocommerce-raffle-ticket' ), $this->label ) );
+				?>
 			</label>
 		</p>
 		<p>
