@@ -40,7 +40,7 @@ class ReportPageTest extends TestCase {
 
 	public function setUp(): void {
 		WP_Mock::setUp();
-		$this->ticket_repo = $this->createMock( TicketRepository::class );
+		$this->ticket_repo   = $this->createMock( TicketRepository::class );
 		$this->order_handler = $this->createMock( OrderHandler::class );
 		$this->report        = new ReportPage( $this->ticket_repo, $this->order_handler, 'Raffle Tickets' );
 	}

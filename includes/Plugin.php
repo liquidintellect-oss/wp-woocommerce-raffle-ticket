@@ -33,11 +33,11 @@ class Plugin {
 	 * @return void
 	 */
 	public function register(): void {
-		$ticket_repo   = new TicketRepository();
-		$seq_repo      = new SequenceRepository();
-		$generator     = new TicketNumberGenerator();
+		$ticket_repo     = new TicketRepository();
+		$seq_repo        = new SequenceRepository();
+		$generator       = new TicketNumberGenerator();
 		$label           = PluginSettings::getLabel();
-		$order_handler = new OrderHandler( $ticket_repo, $seq_repo, $generator );
+		$order_handler   = new OrderHandler( $ticket_repo, $seq_repo, $generator );
 		$order_display   = new OrderDisplay( $ticket_repo, $label );
 		$meta_box        = new ProductMetaBox( $label );
 		$report_page     = new ReportPage( $ticket_repo, $order_handler, $label );

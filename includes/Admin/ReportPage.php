@@ -185,7 +185,8 @@ class ReportPage {
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
 		?>
 		<div class="wrap">
-			<h1>			<?php
+			<h1>			
+			<?php
 			/* translators: %s: configurable ticket label, e.g. "Raffle Tickets" */
 			echo esc_html( sprintf( __( '%s Report', 'wp-woocommerce-raffle-ticket' ), $this->label ) );
 			?>
