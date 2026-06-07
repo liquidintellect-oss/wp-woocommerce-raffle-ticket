@@ -13,7 +13,7 @@ if (branchName && branchName != 'main') {
     if (m) issueSuffix = "-${m[0][1]}"
 }
 
-version = "1.0.0.${buildNumber}${issueSuffix}"
+version = "1.0.1.${buildNumber}${issueSuffix}"
 
 def nodeExe = ['which', 'node'].execute().text.trim()
 
@@ -63,10 +63,26 @@ tasks.register('phpcs', Exec) {
     commandLine 'vendor/bin/phpcs'
 }
 
+tasks.register('phpunit', Exec) {
+    dependsOn composerInstall
+    doFirst {
+        mkdir 'build/test-results/phpunit'
+    }
+    commandLine 'vendor/bin/phpunit'
+}
+
 tasks.named('wpWoocommerceRaffleTicketDistZip') {
-    dependsOn phpcs
+    mustRunAfter check
+}
+
+tasks.named('wpWoocommerceRaffleTicketDistTar') {
+    mustRunAfter check
 }
 
 tasks.named('wrapper') {
     gradleVersion = '9.5.1'
+}
+
+tasks.named('check') {
+    dependsOn phpcs, phpunit
 }

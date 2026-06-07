@@ -11,6 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+use WpWoocommerceRaffleTicket\Admin\PluginSettings;
 use WpWoocommerceRaffleTicket\Admin\ReportPage;
 use WpWoocommerceRaffleTicket\Order\OrderDisplay;
 use WpWoocommerceRaffleTicket\Order\OrderHandler;
@@ -32,16 +33,20 @@ class Plugin {
 	 * @return void
 	 */
 	public function register(): void {
-		$ticket_repo   = new TicketRepository();
-		$seq_repo      = new SequenceRepository();
-		$generator     = new TicketNumberGenerator();
-		$order_handler = new OrderHandler( $ticket_repo, $seq_repo, $generator );
-		$order_display = new OrderDisplay( $ticket_repo );
-		$meta_box      = new ProductMetaBox();
-		$report_page   = new ReportPage( $ticket_repo );
+		$ticket_repo     = new TicketRepository();
+		$seq_repo        = new SequenceRepository();
+		$generator       = new TicketNumberGenerator();
+		$order_handler   = new OrderHandler( $ticket_repo, $seq_repo, $generator );
+		$order_display   = new OrderDisplay( $ticket_repo );
+		$meta_box        = new ProductMetaBox();
+		$report_page     = new ReportPage( $ticket_repo, $order_handler );
+		$plugin_settings = new PluginSettings();
 
-		// Assign tickets when payment is received (order → processing).
+		// Assign tickets when payment is received.
+		// 'processing' covers most gateways (PayPal, etc.).
+		// 'completed'  covers credit-card gateways (Stripe, Square, etc.) that skip processing.
 		add_action( 'woocommerce_order_status_processing', array( $order_handler, 'handle' ), 10, 1 );
+		add_action( 'woocommerce_order_status_completed', array( $order_handler, 'handle' ), 10, 1 );
 
 		// Block add-to-cart when the raffle is sold out.
 		add_filter( 'woocommerce_add_to_cart_validation', array( $order_handler, 'validateCartAdd' ), 10, 3 );
@@ -54,11 +59,15 @@ class Plugin {
 		add_action( 'woocommerce_order_details_after_order_table', array( $order_display, 'renderCustomer' ) );
 		add_action( 'woocommerce_admin_order_data_after_order_details', array( $order_display, 'renderAdmin' ) );
 
-		// Admin report / CSV export.
+		// Admin report / CSV export + retroactive ticket assignment.
 		add_action( 'admin_menu', array( $report_page, 'register' ) );
 
-		// Stream CSV during admin_init — before WordPress outputs any HTML —
-		// so that Content-Type / Content-Disposition headers are sent cleanly.
+		// Stream CSV or run retroactive assignment during admin_init — before WordPress
+		// outputs any HTML — so that headers / redirects are sent cleanly.
 		add_action( 'admin_init', array( $report_page, 'maybeStreamCsv' ) );
+		add_action( 'admin_init', array( $report_page, 'maybeAssignRetroactive' ) );
+
+		// Plugin-level settings under WooCommerce > Settings > Products.
+		$plugin_settings->register();
 	}
 }

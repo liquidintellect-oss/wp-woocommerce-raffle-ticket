@@ -2,6 +2,7 @@
 
 use PHPUnit\Framework\TestCase;
 use WpWoocommerceRaffleTicket\Admin\ReportPage;
+use WpWoocommerceRaffleTicket\Order\OrderHandler;
 use WpWoocommerceRaffleTicket\Ticket\TicketRepository;
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -19,17 +20,29 @@ class WcOrderReportStub extends WC_Order {
 	}
 }
 
+/**
+ * Order stub that exposes a configurable get_id() for retroactive-assignment tests.
+ */
+class WcOrderWithIdStub extends WC_Order {
+	public function __construct( private int $id ) {}
+	public function get_id(): int {
+		return $this->id;
+	}
+}
+
 // ── Test case ─────────────────────────────────────────────────────────────────
 
 class ReportPageTest extends TestCase {
 
 	private TicketRepository $ticket_repo;
+	private OrderHandler $order_handler;
 	private ReportPage $report;
 
 	public function setUp(): void {
 		WP_Mock::setUp();
-		$this->ticket_repo = $this->createMock( TicketRepository::class );
-		$this->report      = new ReportPage( $this->ticket_repo );
+		$this->ticket_repo   = $this->createMock( TicketRepository::class );
+		$this->order_handler = $this->createMock( OrderHandler::class );
+		$this->report        = new ReportPage( $this->ticket_repo, $this->order_handler );
 	}
 
 	public function tearDown(): void {
@@ -263,5 +276,187 @@ class ReportPageTest extends TestCase {
 
 		$this->expectException( \RuntimeException::class );
 		$this->report->maybeStreamCsv();
+	}
+
+	// ── maybeAssignRetroactive() ──────────────────────────────────────────────
+
+	/** @test */
+	public function maybe_assign_retroactive_does_nothing_when_action_is_absent(): void {
+		$this->expectNotToPerformAssertions();
+
+		$_GET = array( 'page' => 'raffle-ticket-report' );
+
+		$this->report->maybeAssignRetroactive();
+	}
+
+	/** @test */
+	public function maybe_assign_retroactive_does_nothing_for_different_page(): void {
+		$this->expectNotToPerformAssertions();
+
+		$_GET = array(
+			'page'   => 'some-other-page',
+			'action' => 'assign_retroactive',
+		);
+
+		$this->report->maybeAssignRetroactive();
+	}
+
+	/** @test */
+	public function maybe_assign_retroactive_does_nothing_for_download_action(): void {
+		$this->expectNotToPerformAssertions();
+
+		$_GET = array(
+			'page'   => 'raffle-ticket-report',
+			'action' => 'download',
+		);
+
+		$this->report->maybeAssignRetroactive();
+	}
+
+	/** @test */
+	public function maybe_assign_retroactive_dies_on_invalid_nonce(): void {
+		$_GET = array(
+			'page'     => 'raffle-ticket-report',
+			'action'   => 'assign_retroactive',
+			'_wpnonce' => 'bad',
+		);
+
+		WP_Mock::userFunction( 'sanitize_text_field', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'wp_unslash', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'wp_verify_nonce', array( 'return' => false ) );
+		WP_Mock::userFunction( 'esc_html__', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction(
+			'wp_die',
+			array(
+				'times'  => 1,
+				'return' => static function () {
+					throw new \RuntimeException( 'wp_die' );
+				},
+			)
+		);
+
+		$this->expectException( \RuntimeException::class );
+		$this->report->maybeAssignRetroactive();
+	}
+
+	/** @test */
+	public function maybe_assign_retroactive_dies_when_user_lacks_capability(): void {
+		$_GET = array(
+			'page'     => 'raffle-ticket-report',
+			'action'   => 'assign_retroactive',
+			'_wpnonce' => 'valid',
+		);
+
+		WP_Mock::userFunction( 'sanitize_text_field', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'wp_unslash', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'wp_verify_nonce', array( 'return' => true ) );
+		WP_Mock::userFunction( 'current_user_can', array( 'return' => false ) );
+		WP_Mock::userFunction( 'esc_html__', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction(
+			'wp_die',
+			array(
+				'times'  => 1,
+				'return' => static function () {
+					throw new \RuntimeException( 'wp_die' );
+				},
+			)
+		);
+
+		$this->expectException( \RuntimeException::class );
+		$this->report->maybeAssignRetroactive();
+	}
+
+	/** @test */
+	public function maybe_assign_retroactive_calls_handle_for_orders_without_tickets(): void {
+		$_GET = array(
+			'page'     => 'raffle-ticket-report',
+			'action'   => 'assign_retroactive',
+			'_wpnonce' => 'valid',
+		);
+
+		// Two orders: order 10 has no tickets (needs assignment), order 20 already assigned.
+		$order_needs   = new WcOrderWithIdStub( 10 );
+		$order_already = new WcOrderWithIdStub( 20 );
+
+		WP_Mock::userFunction( 'sanitize_text_field', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'wp_unslash', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'wp_verify_nonce', array( 'return' => true ) );
+		WP_Mock::userFunction( 'current_user_can', array( 'return' => true ) );
+		WP_Mock::userFunction(
+			'wc_get_orders',
+			array(
+				'return' => array( $order_needs, $order_already ),
+			)
+		);
+		WP_Mock::userFunction( 'admin_url', array( 'return' => 'http://example.com/wp-admin/admin.php' ) );
+		WP_Mock::userFunction( 'add_query_arg', array( 'return' => 'http://example.com/wp-admin/admin.php?page=raffle-ticket-report&assigned=1' ) );
+		// Throw so that the subsequent exit; is never reached — prevents PHPUnit from terminating.
+		WP_Mock::userFunction(
+			'wp_safe_redirect',
+			array(
+				'times'  => 1,
+				'return' => static function () {
+					throw new \RuntimeException( 'wp_safe_redirect' );
+				},
+			)
+		);
+
+		$this->ticket_repo
+			->method( 'hasTicketsForOrder' )
+			->willReturnMap(
+				array(
+					array( 10, false ), // Order 10 has no tickets — needs assignment.
+					array( 20, true ),  // Order 20 already has tickets — skip.
+				)
+			);
+
+		// handle() should be called only for order 10.
+		$this->order_handler
+			->expects( $this->once() )
+			->method( 'handle' )
+			->with( 10 );
+
+		$this->expectException( \RuntimeException::class );
+		$this->expectExceptionMessage( 'wp_safe_redirect' );
+		$this->report->maybeAssignRetroactive();
+	}
+
+	/** @test */
+	public function maybe_assign_retroactive_skips_orders_that_already_have_tickets(): void {
+		$_GET = array(
+			'page'     => 'raffle-ticket-report',
+			'action'   => 'assign_retroactive',
+			'_wpnonce' => 'valid',
+		);
+
+		$order = new WcOrderWithIdStub( 42 );
+
+		WP_Mock::userFunction( 'sanitize_text_field', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'wp_unslash', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'wp_verify_nonce', array( 'return' => true ) );
+		WP_Mock::userFunction( 'current_user_can', array( 'return' => true ) );
+		WP_Mock::userFunction( 'wc_get_orders', array( 'return' => array( $order ) ) );
+		WP_Mock::userFunction( 'admin_url', array( 'return' => 'http://example.com/wp-admin/admin.php' ) );
+		WP_Mock::userFunction( 'add_query_arg', array( 'return' => 'http://example.com/wp-admin/admin.php?page=raffle-ticket-report&assigned=0' ) );
+		// Throw so that the subsequent exit; is never reached.
+		WP_Mock::userFunction(
+			'wp_safe_redirect',
+			array(
+				'times'  => 1,
+				'return' => static function () {
+					throw new \RuntimeException( 'wp_safe_redirect' );
+				},
+			)
+		);
+
+		// Order already has tickets — should skip.
+		$this->ticket_repo->method( 'hasTicketsForOrder' )->willReturn( true );
+
+		// handle() should never be called.
+		$this->order_handler->expects( $this->never() )->method( 'handle' );
+
+		$this->expectException( \RuntimeException::class );
+		$this->expectExceptionMessage( 'wp_safe_redirect' );
+		$this->report->maybeAssignRetroactive();
 	}
 }
