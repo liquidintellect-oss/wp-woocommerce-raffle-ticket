@@ -14,14 +14,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Class PluginSettings
  *
- * Registers a dedicated "Raffle Ticket Settings" submenu page under WooCommerce
- * and exposes a single configurable field: the label used throughout the store
- * wherever raffle tickets are displayed (customer order details, admin order
- * view, report page, product meta box).
+ * Owns the plugin-wide "ticket label" option: exposes a static getter used
+ * throughout the plugin and registers the WordPress setting so that the
+ * Settings API handles sanitisation and saving.
+ *
+ * The settings UI is rendered inline on the ReportPage rather than on a
+ * dedicated page, keeping the WooCommerce admin menu compact.
  *
  * Usage:
  *   - Retrieve the current label: PluginSettings::getLabel()
- *   - Register admin hooks:       (new PluginSettings())->register()
+ *   - Register the WP setting:    (new PluginSettings())->register()
  */
 class PluginSettings {
 
@@ -31,14 +33,8 @@ class PluginSettings {
 	/** Default label when the option has not been saved. */
 	const DEFAULT_LABEL = 'Raffle Tickets';
 
-	/** Options group name used by WordPress Settings API. */
+	/** Options group name used by the WordPress Settings API. */
 	const OPTIONS_GROUP = 'wrt_settings_group';
-
-	/** Admin page slug. */
-	const PAGE_SLUG = 'raffle-ticket-settings';
-
-	/** Settings section ID. */
-	const SECTION_ID = 'wrt_main';
 
 	/**
 	 * Return the configured ticket label, falling back to the default.
@@ -52,33 +48,20 @@ class PluginSettings {
 	}
 
 	/**
-	 * Register WordPress admin hooks for this plugin's settings page.
+	 * Register the WordPress admin hooks needed for settings persistence.
 	 *
 	 * @return void
 	 */
 	public function register(): void {
-		add_action( 'admin_menu', array( $this, 'addMenuPage' ) );
 		add_action( 'admin_init', array( $this, 'registerSettings' ) );
 	}
 
 	/**
-	 * Add a "Raffle Ticket Settings" submenu page under WooCommerce.
+	 * Register the setting with the WordPress Settings API.
 	 *
-	 * @return void
-	 */
-	public function addMenuPage(): void {
-		add_submenu_page(
-			'woocommerce',
-			esc_html__( 'Raffle Ticket Settings', 'wp-woocommerce-raffle-ticket' ),
-			esc_html__( 'Raffle Ticket Settings', 'wp-woocommerce-raffle-ticket' ),
-			'manage_woocommerce',
-			self::PAGE_SLUG,
-			array( $this, 'render' )
-		);
-	}
-
-	/**
-	 * Register the setting and its field via the WordPress Settings API.
+	 * Handles sanitisation and saving via options.php; no separate
+	 * add_settings_section / add_settings_field calls are required because the
+	 * field is rendered directly inside ReportPage::render().
 	 *
 	 * @return void
 	 */
@@ -92,54 +75,5 @@ class PluginSettings {
 				'default'           => self::DEFAULT_LABEL,
 			)
 		);
-
-		add_settings_section( self::SECTION_ID, '', '__return_null', self::PAGE_SLUG );
-
-		add_settings_field(
-			self::OPTION_KEY,
-			esc_html__( 'Ticket Label', 'wp-woocommerce-raffle-ticket' ),
-			array( $this, 'renderLabelField' ),
-			self::PAGE_SLUG,
-			self::SECTION_ID
-		);
-	}
-
-	/**
-	 * Render the "Ticket Label" input field.
-	 *
-	 * @return void
-	 */
-	public function renderLabelField(): void {
-		?>
-		<input
-			type="text"
-			name="<?php echo esc_attr( self::OPTION_KEY ); ?>"
-			value="<?php echo esc_attr( self::getLabel() ); ?>"
-			class="regular-text"
-		/>
-		<p class="description">
-			<?php esc_html_e( 'Label used throughout the store wherever raffle tickets are displayed (e.g. "Raffle Tickets", "Lottery Tickets", "Event Tickets").', 'wp-woocommerce-raffle-ticket' ); ?>
-		</p>
-		<?php
-	}
-
-	/**
-	 * Render the settings page HTML.
-	 *
-	 * @return void
-	 */
-	public function render(): void {
-		?>
-		<div class="wrap">
-			<h1><?php esc_html_e( 'Raffle Ticket Settings', 'wp-woocommerce-raffle-ticket' ); ?></h1>
-			<form method="post" action="options.php">
-				<?php
-				settings_fields( self::OPTIONS_GROUP );
-				do_settings_sections( self::PAGE_SLUG );
-				submit_button();
-				?>
-			</form>
-		</div>
-		<?php
 	}
 }

@@ -146,10 +146,10 @@ class PluginTest extends TestCase {
 	}
 
 	/** @test */
-	public function register_hooks_plugin_settings_admin_menu(): void {
+	public function register_hooks_plugin_settings_to_admin_init(): void {
 		WP_Mock::expectActionAdded(
-			'admin_menu',
-			array( new AnyInstance( PluginSettings::class ), 'addMenuPage' )
+			'admin_init',
+			array( new AnyInstance( PluginSettings::class ), 'registerSettings' )
 		);
 
 		( new Plugin() )->register();

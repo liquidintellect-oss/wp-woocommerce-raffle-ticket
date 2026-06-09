@@ -60,6 +60,9 @@ class Plugin {
 		add_action( 'woocommerce_order_details_after_order_table', array( $order_display, 'renderCustomer' ) );
 		add_action( 'woocommerce_admin_order_data_after_order_details', array( $order_display, 'renderAdmin' ) );
 
+		// Register the ticket-label option with the WordPress Settings API.
+		$plugin_settings->register();
+
 		// Admin report / CSV export + retroactive ticket assignment.
 		add_action( 'admin_menu', array( $report_page, 'register' ) );
 
@@ -67,8 +70,5 @@ class Plugin {
 		// outputs any HTML — so that headers / redirects are sent cleanly.
 		add_action( 'admin_init', array( $report_page, 'maybeStreamCsv' ) );
 		add_action( 'admin_init', array( $report_page, 'maybeAssignRetroactive' ) );
-
-		// Plugin-level settings under WooCommerce > Settings > Products.
-		$plugin_settings->register();
 	}
 }

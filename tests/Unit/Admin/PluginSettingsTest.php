@@ -73,8 +73,7 @@ class PluginSettingsTest extends TestCase {
 	// ── register() ────────────────────────────────────────────────────────────
 
 	/** @test */
-	public function register_hooks_admin_menu_and_admin_init_actions(): void {
-		WP_Mock::expectActionAdded( 'admin_menu', array( $this->settings, 'addMenuPage' ) );
+	public function register_hooks_register_settings_to_admin_init(): void {
 		WP_Mock::expectActionAdded( 'admin_init', array( $this->settings, 'registerSettings' ) );
 
 		$this->settings->register();
@@ -82,36 +81,10 @@ class PluginSettingsTest extends TestCase {
 		$this->addToAssertionCount( 1 );
 	}
 
-	// ── addMenuPage() ─────────────────────────────────────────────────────────
-
-	/** @test */
-	public function add_menu_page_registers_submenu_under_woocommerce(): void {
-		WP_Mock::userFunction( 'esc_html__', array( 'return_arg' => 0 ) );
-		WP_Mock::userFunction(
-			'add_submenu_page',
-			array(
-				'times' => 1,
-				'args'  => array(
-					'woocommerce',
-					\Mockery::any(),
-					\Mockery::any(),
-					'manage_woocommerce',
-					PluginSettings::PAGE_SLUG,
-					\Mockery::any(),
-				),
-			)
-		);
-
-		$this->settings->addMenuPage();
-
-		$this->addToAssertionCount( 1 );
-	}
-
 	// ── registerSettings() ────────────────────────────────────────────────────
 
 	/** @test */
-	public function register_settings_calls_register_setting_with_correct_option_key(): void {
-		WP_Mock::userFunction( 'esc_html__', array( 'return_arg' => 0 ) );
+	public function register_settings_calls_register_setting_with_correct_args(): void {
 		WP_Mock::userFunction(
 			'register_setting',
 			array(
@@ -119,34 +92,9 @@ class PluginSettingsTest extends TestCase {
 				'args'  => array( PluginSettings::OPTIONS_GROUP, PluginSettings::OPTION_KEY, \Mockery::any() ),
 			)
 		);
-		WP_Mock::userFunction( 'add_settings_section', array( 'times' => 1 ) );
-		WP_Mock::userFunction( 'add_settings_field', array( 'times' => 1 ) );
 
 		$this->settings->registerSettings();
 
 		$this->addToAssertionCount( 1 );
-	}
-
-	// ── renderLabelField() ────────────────────────────────────────────────────
-
-	/** @test */
-	public function render_label_field_outputs_text_input_with_current_value(): void {
-		WP_Mock::userFunction(
-			'get_option',
-			array(
-				'args'   => array( PluginSettings::OPTION_KEY, PluginSettings::DEFAULT_LABEL ),
-				'return' => 'Lottery Tickets',
-			)
-		);
-		WP_Mock::userFunction( 'esc_attr', array( 'return_arg' => 0 ) );
-		WP_Mock::userFunction( 'esc_html__', array( 'return_arg' => 0 ) );
-
-		ob_start();
-		$this->settings->renderLabelField();
-		$output = ob_get_clean();
-
-		$this->assertStringContainsString( 'type="text"', $output );
-		$this->assertStringContainsString( PluginSettings::OPTION_KEY, $output );
-		$this->assertStringContainsString( 'Lottery Tickets', $output );
 	}
 }

@@ -13,6 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 use WpWoocommerceRaffleTicket\Order\OrderHandler;
 use WpWoocommerceRaffleTicket\Ticket\TicketRepository;
+use WpWoocommerceRaffleTicket\Admin\PluginSettings;
 
 /**
  * Class ReportPage
@@ -181,16 +182,18 @@ class ReportPage {
 		);
 
 		// phpcs:disable WordPress.Security.NonceVerification.Recommended
-		$assigned = isset( $_GET['assigned'] ) ? (int) $_GET['assigned'] : null;
+		$assigned         = isset( $_GET['assigned'] ) ? (int) $_GET['assigned'] : null;
+		$settings_updated = isset( $_GET['settings-updated'] );
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
 		?>
 		<div class="wrap">
-			<h1>			
+			<h1>
 			<?php
 			/* translators: %s: configurable ticket label, e.g. "Raffle Tickets" */
 			echo esc_html( sprintf( __( '%s Report', 'wp-woocommerce-raffle-ticket' ), $this->label ) );
 			?>
 			</h1>
+
 			<?php if ( null !== $assigned ) : ?>
 				<div class="notice notice-success is-dismissible">
 					<p>
@@ -204,6 +207,13 @@ class ReportPage {
 					</p>
 				</div>
 			<?php endif; ?>
+
+			<?php if ( $settings_updated ) : ?>
+				<div class="notice notice-success is-dismissible">
+					<p><?php esc_html_e( 'Settings saved.', 'wp-woocommerce-raffle-ticket' ); ?></p>
+				</div>
+			<?php endif; ?>
+
 			<p>
 				<a href="<?php echo esc_url( $download_url ); ?>" class="button button-primary">
 					<?php esc_html_e( 'Download CSV', 'wp-woocommerce-raffle-ticket' ); ?>
@@ -213,6 +223,35 @@ class ReportPage {
 					<?php esc_html_e( 'Assign Missing Tickets', 'wp-woocommerce-raffle-ticket' ); ?>
 				</a>
 			</p>
+
+			<hr />
+
+			<h2><?php esc_html_e( 'Settings', 'wp-woocommerce-raffle-ticket' ); ?></h2>
+			<form method="post" action="options.php">
+				<?php settings_fields( PluginSettings::OPTIONS_GROUP ); ?>
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row">
+							<label for="<?php echo esc_attr( PluginSettings::OPTION_KEY ); ?>">
+								<?php esc_html_e( 'Ticket Label', 'wp-woocommerce-raffle-ticket' ); ?>
+							</label>
+						</th>
+						<td>
+							<input
+								type="text"
+								id="<?php echo esc_attr( PluginSettings::OPTION_KEY ); ?>"
+								name="<?php echo esc_attr( PluginSettings::OPTION_KEY ); ?>"
+								value="<?php echo esc_attr( PluginSettings::getLabel() ); ?>"
+								class="regular-text"
+							/>
+							<p class="description">
+								<?php esc_html_e( 'Label used throughout the store wherever tickets are displayed (e.g. "Raffle Tickets", "Lottery Tickets", "Event Tickets").', 'wp-woocommerce-raffle-ticket' ); ?>
+							</p>
+						</td>
+					</tr>
+				</table>
+				<?php submit_button( esc_html__( 'Save Settings', 'wp-woocommerce-raffle-ticket' ) ); ?>
+			</form>
 		</div>
 		<?php
 	}
