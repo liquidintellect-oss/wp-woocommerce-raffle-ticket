@@ -146,10 +146,10 @@ class PluginTest extends TestCase {
 	}
 
 	/** @test */
-	public function register_hooks_plugin_settings_filters(): void {
-		WP_Mock::expectFilterAdded(
-			'woocommerce_get_sections_products',
-			array( new AnyInstance( PluginSettings::class ), 'addSection' )
+	public function register_hooks_plugin_settings_admin_menu(): void {
+		WP_Mock::expectActionAdded(
+			'admin_menu',
+			array( new AnyInstance( PluginSettings::class ), 'addMenuPage' )
 		);
 
 		( new Plugin() )->register();
