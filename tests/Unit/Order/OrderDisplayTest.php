@@ -22,7 +22,7 @@ class OrderDisplayTest extends TestCase {
 	public function setUp(): void {
 		WP_Mock::setUp();
 		$this->ticket_repo = $this->createMock( TicketRepository::class );
-		$this->display     = new OrderDisplay( $this->ticket_repo );
+		$this->display     = new OrderDisplay( $this->ticket_repo, 'Raffle Tickets' );
 	}
 
 	public function tearDown(): void {
@@ -50,7 +50,7 @@ class OrderDisplayTest extends TestCase {
 		);
 		$this->ticket_repo->method( 'findByOrder' )->willReturn( $tickets );
 
-		WP_Mock::userFunction( 'esc_html__', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( '__', array( 'return_arg' => 0 ) );
 		WP_Mock::userFunction( 'esc_html', array( 'return_arg' => 0 ) );
 
 		ob_start();
@@ -94,7 +94,6 @@ class OrderDisplayTest extends TestCase {
 		);
 		$this->ticket_repo->method( 'findByOrder' )->willReturn( $tickets );
 
-		WP_Mock::userFunction( 'esc_html__', array( 'return_arg' => 0 ) );
 		WP_Mock::userFunction( 'esc_html', array( 'return_arg' => 0 ) );
 
 		ob_start();

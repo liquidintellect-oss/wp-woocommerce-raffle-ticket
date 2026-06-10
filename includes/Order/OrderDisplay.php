@@ -25,8 +25,12 @@ class OrderDisplay {
 	 * Constructor.
 	 *
 	 * @param TicketRepository $ticket_repo Ticket retrieval layer.
+	 * @param string           $label       Configurable display label (e.g. "Raffle Tickets").
 	 */
-	public function __construct( private TicketRepository $ticket_repo ) {}
+	public function __construct(
+		private TicketRepository $ticket_repo,
+		private string $label
+	) {}
 
 	/**
 	 * Render the raffle ticket list on the customer order details page.
@@ -44,7 +48,8 @@ class OrderDisplay {
 			return;
 		}
 
-		echo '<h2 class="raffle-tickets-heading">' . esc_html__( 'Your Raffle Tickets', 'wp-woocommerce-raffle-ticket' ) . '</h2>';
+		/* translators: %s: configurable ticket label, e.g. "Raffle Tickets" */
+		echo '<h2 class="raffle-tickets-heading">' . esc_html( sprintf( __( 'Your %s', 'wp-woocommerce-raffle-ticket' ), $this->label ) ) . '</h2>';
 		echo '<ul class="raffle-tickets">';
 		foreach ( $tickets as $ticket ) {
 			echo '<li>' . esc_html( $ticket->ticket_number ) . '</li>';
@@ -69,7 +74,7 @@ class OrderDisplay {
 		}
 
 		echo '<div class="order_data_column raffle-tickets-admin">';
-		echo '<h4>' . esc_html__( 'Raffle Tickets', 'wp-woocommerce-raffle-ticket' ) . '</h4>';
+		echo '<h4>' . esc_html( $this->label ) . '</h4>';
 		echo '<ul>';
 		foreach ( $tickets as $ticket ) {
 			echo '<li>' . esc_html( $ticket->ticket_number ) . '</li>';

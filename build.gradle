@@ -63,6 +63,19 @@ tasks.register('phpcs', Exec) {
     commandLine 'vendor/bin/phpcs'
 }
 
+tasks.register('phpcbf', Exec) {
+    dependsOn composerInstall
+    commandLine 'vendor/bin/phpcbf'
+    // phpcbf exits 1 when it fixes violations (success), 2 on failure.
+    // Treat exit code 1 as success so Gradle doesn't mark the task failed.
+    ignoreExitValue = true
+    doLast {
+        if (executionResult.get().exitValue == 2) {
+            throw new GradleException('phpcbf encountered unfixable violations')
+        }
+    }
+}
+
 tasks.register('phpunit', Exec) {
     dependsOn composerInstall
     doFirst {

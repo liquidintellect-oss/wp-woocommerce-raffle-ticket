@@ -20,7 +20,7 @@ class ProductMetaBoxTest extends TestCase {
 
 	public function setUp(): void {
 		WP_Mock::setUp();
-		$this->meta_box = new ProductMetaBox();
+		$this->meta_box = new ProductMetaBox( 'Raffle Tickets' );
 	}
 
 	public function tearDown(): void {
@@ -37,7 +37,8 @@ class ProductMetaBoxTest extends TestCase {
 
 	/** @test */
 	public function register_calls_add_meta_box_for_product_post_type(): void {
-		WP_Mock::userFunction( 'esc_html__', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( '__', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'esc_html', array( 'return_arg' => 0 ) );
 		WP_Mock::userFunction(
 			'add_meta_box',
 			array(

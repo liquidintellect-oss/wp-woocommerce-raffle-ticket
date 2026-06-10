@@ -36,10 +36,11 @@ class Plugin {
 		$ticket_repo     = new TicketRepository();
 		$seq_repo        = new SequenceRepository();
 		$generator       = new TicketNumberGenerator();
+		$label           = PluginSettings::getLabel();
 		$order_handler   = new OrderHandler( $ticket_repo, $seq_repo, $generator );
-		$order_display   = new OrderDisplay( $ticket_repo );
-		$meta_box        = new ProductMetaBox();
-		$report_page     = new ReportPage( $ticket_repo, $order_handler );
+		$order_display   = new OrderDisplay( $ticket_repo, $label );
+		$meta_box        = new ProductMetaBox( $label );
+		$report_page     = new ReportPage( $ticket_repo, $order_handler, $label );
 		$plugin_settings = new PluginSettings();
 
 		// Assign tickets when payment is received.
@@ -59,6 +60,9 @@ class Plugin {
 		add_action( 'woocommerce_order_details_after_order_table', array( $order_display, 'renderCustomer' ) );
 		add_action( 'woocommerce_admin_order_data_after_order_details', array( $order_display, 'renderAdmin' ) );
 
+		// Register the ticket-label option with the WordPress Settings API.
+		$plugin_settings->register();
+
 		// Admin report / CSV export + retroactive ticket assignment.
 		add_action( 'admin_menu', array( $report_page, 'register' ) );
 
@@ -66,8 +70,5 @@ class Plugin {
 		// outputs any HTML — so that headers / redirects are sent cleanly.
 		add_action( 'admin_init', array( $report_page, 'maybeStreamCsv' ) );
 		add_action( 'admin_init', array( $report_page, 'maybeAssignRetroactive' ) );
-
-		// Plugin-level settings under WooCommerce > Settings > Products.
-		$plugin_settings->register();
 	}
 }

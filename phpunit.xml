@@ -11,4 +11,7 @@
             <directory suffix="Test.php">tests/Unit</directory>
         </testsuite>
     </testsuites>
+    <logging>
+        <junit outputFile="build/test-results/phpunit/junit.xml"/>
+    </logging>
 </phpunit>
