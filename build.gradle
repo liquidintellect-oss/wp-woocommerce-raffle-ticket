@@ -13,7 +13,7 @@ if (branchName && branchName != 'main') {
     if (m) issueSuffix = "-${m[0][1]}"
 }
 
-version = "1.0.1.${buildNumber}${issueSuffix}"
+version = "1.0.2.${buildNumber}${issueSuffix}"
 
 def nodeExe = ['which', 'node'].execute().text.trim()
 
