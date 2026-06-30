@@ -152,6 +152,11 @@ class TicketRepository {
 	 * Pending placeholders are excluded so that customer-facing views and the
 	 * admin order panel do not display meaningless placeholder values.
 	 *
+	 * Each row is enriched with roll metadata via a LEFT JOIN:
+	 *   - roll_label       — the roll's human-readable label (may be empty).
+	 *   - roll_start       — first printed number on the roll.
+	 *   - roll_last        — last printed number on the roll.
+	 *
 	 * @param int $order_id The WooCommerce order ID.
 	 *
 	 * @return object[] Array of row objects.
@@ -161,12 +166,20 @@ class TicketRepository {
 	public function findByOrder( int $order_id ): array {
 		global $wpdb;
 
+		$tickets_table = $wpdb->prefix . 'raffle_tickets';
+		$rolls_table   = $wpdb->prefix . 'raffle_ticket_rolls';
+
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$results = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT * FROM {$wpdb->prefix}raffle_tickets
-				 WHERE order_id = %d AND roll_id IS NOT NULL
-				 ORDER BY ticket_sequence ASC",
+				"SELECT t.*,
+				        r.label                              AS roll_label,
+				        r.start_number                       AS roll_start,
+				        (r.start_number + r.ticket_count - 1) AS roll_last
+				 FROM {$tickets_table} t
+				 LEFT JOIN {$rolls_table} r ON r.id = t.roll_id
+				 WHERE t.order_id = %d AND t.roll_id IS NOT NULL
+				 ORDER BY t.ticket_sequence ASC",
 				$order_id
 			)
 		);
@@ -176,12 +189,18 @@ class TicketRepository {
 	}
 
 	/**
-	 * Retrieve all ticket records joined with product name for the CSV report.
+	 * Retrieve all ticket records joined with product name and roll info for the CSV report.
 	 *
 	 * Includes both assigned and pending records.  Callers can distinguish them
 	 * by checking whether roll_id is NULL.
 	 *
-	 * @return object[] Array of row objects (includes product_name column).
+	 * Each row is enriched with:
+	 *   - product_name  — post_title of the associated product.
+	 *   - roll_label    — human-readable label of the roll (may be empty).
+	 *   - roll_start    — first printed number on the roll.
+	 *   - roll_last     — last printed number on the roll.
+	 *
+	 * @return object[] Array of row objects.
 	 *
 	 * @global \wpdb $wpdb WordPress database abstraction object.
 	 */
@@ -189,12 +208,18 @@ class TicketRepository {
 		global $wpdb;
 
 		$tickets_table = $wpdb->prefix . 'raffle_tickets';
+		$rolls_table   = $wpdb->prefix . 'raffle_ticket_rolls';
 
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$results = $wpdb->get_results(
-			"SELECT t.*, p.post_title AS product_name
+			"SELECT t.*,
+			        p.post_title                              AS product_name,
+			        r.label                                   AS roll_label,
+			        r.start_number                            AS roll_start,
+			        (r.start_number + r.ticket_count - 1)    AS roll_last
 			 FROM {$tickets_table} t
 			 LEFT JOIN {$wpdb->posts} p ON p.ID = t.product_id
+			 LEFT JOIN {$rolls_table} r ON r.id = t.roll_id
 			 ORDER BY t.order_id ASC, t.ticket_sequence ASC"
 		);
 		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared

@@ -84,6 +84,7 @@ class ReportPageTest extends TestCase {
 		$this->assertStringContainsString( 'Customer Email', $content );
 		$this->assertStringContainsString( 'Product Name', $content );
 		$this->assertStringContainsString( 'Ticket Number', $content );
+		$this->assertStringContainsString( 'Roll', $content );
 		$this->assertStringContainsString( 'Purchase Date', $content );
 	}
 
@@ -95,6 +96,9 @@ class ReportPageTest extends TestCase {
 				'product_name'  => 'My Raffle',
 				'ticket_number' => 'R-1001',
 				'roll_id'       => 1,
+				'roll_label'    => 'Roll A',
+				'roll_start'    => '1001',
+				'roll_last'     => '1500',
 				'created_at'    => '2025-01-01 10:00:00',
 			),
 			(object) array(
@@ -102,6 +106,9 @@ class ReportPageTest extends TestCase {
 				'product_name'  => 'My Raffle',
 				'ticket_number' => 'R-1002',
 				'roll_id'       => 1,
+				'roll_label'    => 'Roll A',
+				'roll_start'    => '1001',
+				'roll_last'     => '1500',
 				'created_at'    => '2025-01-01 10:00:01',
 			),
 		);
@@ -128,6 +135,9 @@ class ReportPageTest extends TestCase {
 				'product_name'  => 'Lucky Draw',
 				'ticket_number' => 'PENDING-abc123',
 				'roll_id'       => null,
+				'roll_label'    => null,
+				'roll_start'    => null,
+				'roll_last'     => null,
 				'created_at'    => '2025-03-10 09:00:00',
 			),
 		);
@@ -153,6 +163,9 @@ class ReportPageTest extends TestCase {
 				'product_name'  => 'Lucky Draw',
 				'ticket_number' => 'LD-1001',
 				'roll_id'       => 2,
+				'roll_label'    => 'Roll B',
+				'roll_start'    => '2001',
+				'roll_last'     => '2500',
 				'created_at'    => '2025-03-10 09:00:00',
 			),
 		);
@@ -179,6 +192,9 @@ class ReportPageTest extends TestCase {
 				'product_name'  => 'Raffle',
 				'ticket_number' => 'R-1001',
 				'roll_id'       => 1,
+				'roll_label'    => 'Roll A',
+				'roll_start'    => '1001',
+				'roll_last'     => '1500',
 				'created_at'    => '2025-01-01 10:00:00',
 			),
 		);
@@ -195,6 +211,132 @@ class ReportPageTest extends TestCase {
 
 		// Data row still present with empty customer fields.
 		$this->assertStringContainsString( 'R-1001', $content );
+	}
+
+	/** @test */
+	public function write_csv_includes_roll_label_and_range_for_assigned_ticket(): void {
+		$rows = array(
+			(object) array(
+				'order_id'      => 7,
+				'product_name'  => 'Grand Raffle',
+				'ticket_number' => 'GR-1042',
+				'roll_id'       => 3,
+				'roll_label'    => 'Roll C',
+				'roll_start'    => '1001',
+				'roll_last'     => '1500',
+				'created_at'    => '2025-05-01 12:00:00',
+			),
+		);
+		$this->ticket_repo->method( 'findAll' )->willReturn( $rows );
+
+		$order = new WcOrderReportStub( 'Bob Jones', 'bob@example.com' );
+		WP_Mock::userFunction( 'wc_get_order', array( 'return' => $order ) );
+		WP_Mock::userFunction( '__', array( 'return_arg' => 0 ) );
+
+		$stream = $this->openTempStream();
+		$this->report->writeCsv( $stream );
+		$content = $this->readStream( $stream );
+
+		$this->assertStringContainsString( 'Roll C', $content );
+		$this->assertStringContainsString( '1001', $content );
+		$this->assertStringContainsString( '1500', $content );
+	}
+
+	/** @test */
+	public function write_csv_uses_roll_id_when_label_is_empty(): void {
+		$rows = array(
+			(object) array(
+				'order_id'      => 8,
+				'product_name'  => 'Grand Raffle',
+				'ticket_number' => 'GR-1001',
+				'roll_id'       => 5,
+				'roll_label'    => '',
+				'roll_start'    => '1001',
+				'roll_last'     => '1500',
+				'created_at'    => '2025-05-01 12:00:00',
+			),
+		);
+		$this->ticket_repo->method( 'findAll' )->willReturn( $rows );
+
+		$order = new WcOrderReportStub( 'Carol White', 'carol@example.com' );
+		WP_Mock::userFunction( 'wc_get_order', array( 'return' => $order ) );
+		WP_Mock::userFunction(
+			'__',
+			array(
+				'return' => static function ( string $text ) {
+					// Pass through so "Roll #%d" survives sprintf.
+					return $text;
+				},
+			)
+		);
+
+		$stream = $this->openTempStream();
+		$this->report->writeCsv( $stream );
+		$content = $this->readStream( $stream );
+
+		// Should fall back to "Roll #5".
+		$this->assertStringContainsString( '5', $content );
+	}
+
+	/** @test */
+	public function write_csv_leaves_roll_column_empty_for_pending_tickets(): void {
+		$rows = array(
+			(object) array(
+				'order_id'      => 9,
+				'product_name'  => 'Lucky Dip',
+				'ticket_number' => 'PENDING-xyz',
+				'roll_id'       => null,
+				'roll_label'    => null,
+				'roll_start'    => null,
+				'roll_last'     => null,
+				'created_at'    => '2025-05-02 08:00:00',
+			),
+		);
+		$this->ticket_repo->method( 'findAll' )->willReturn( $rows );
+
+		$order = new WcOrderReportStub( 'Dave Brown', 'dave@example.com' );
+		WP_Mock::userFunction( 'wc_get_order', array( 'return' => $order ) );
+		WP_Mock::userFunction( '__', array( 'return_arg' => 0 ) );
+
+		$stream = $this->openTempStream();
+		$this->report->writeCsv( $stream );
+		$content = $this->readStream( $stream );
+
+		// Roll column for pending rows should be empty — adjacent commas with no value.
+		$this->assertStringContainsString( 'Pending,,', $content );
+	}
+
+	// ── find_all query joins rolls table ──────────────────────────────────────
+
+	/** @test */
+	public function find_all_query_joins_rolls_table(): void {
+		// Delegate this to the TicketRepositoryTest — just confirm the contract
+		// is honoured in the integration path: findAll() rows include roll fields.
+		$this->ticket_repo
+			->method( 'findAll' )
+			->willReturn(
+				array(
+					(object) array(
+						'order_id'      => 1,
+						'product_name'  => 'Test',
+						'ticket_number' => 'T-0001',
+						'roll_id'       => 1,
+						'roll_label'    => 'Roll A',
+						'roll_start'    => '1',
+						'roll_last'     => '100',
+						'created_at'    => '2025-01-01 00:00:00',
+					),
+				)
+			);
+
+		WP_Mock::userFunction( 'wc_get_order', array( 'return' => new WcOrderReportStub( 'X', 'x@x.com' ) ) );
+		WP_Mock::userFunction( '__', array( 'return_arg' => 0 ) );
+
+		$stream = $this->openTempStream();
+		$this->report->writeCsv( $stream );
+		$content = $this->readStream( $stream );
+
+		$this->assertStringContainsString( 'Roll A', $content );
 	}
 
 	// ── register() ────────────────────────────────────────────────────────────

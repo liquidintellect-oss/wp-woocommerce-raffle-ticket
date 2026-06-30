@@ -338,6 +338,7 @@ class ReportPage {
 				__( 'Customer Email', 'wp-woocommerce-raffle-ticket' ),
 				__( 'Product Name', 'wp-woocommerce-raffle-ticket' ),
 				__( 'Ticket Number', 'wp-woocommerce-raffle-ticket' ),
+				__( 'Roll', 'wp-woocommerce-raffle-ticket' ),
 				__( 'Purchase Date', 'wp-woocommerce-raffle-ticket' ),
 			),
 			',',
@@ -355,6 +356,9 @@ class ReportPage {
 				? __( 'Pending', 'wp-woocommerce-raffle-ticket' )
 				: $row->ticket_number;
 
+			// Build a human-readable roll identifier for assigned tickets.
+			$roll_label = $this->formatCsvRollLabel( $row );
+
 			fputcsv(
 				$stream,
 				array(
@@ -363,6 +367,7 @@ class ReportPage {
 					$customer_email,
 					$row->product_name ?? '',
 					$ticket_number,
+					$roll_label,
 					$row->created_at,
 				),
 				',',
@@ -370,5 +375,35 @@ class ReportPage {
 				'\\'
 			);
 		}
+	}
+
+	/**
+	 * Build a concise roll identifier string for a CSV data row.
+	 *
+	 * Returns an empty string for pending tickets (null roll_id).
+	 * For assigned tickets returns "{label} ({start}–{last})" when a label is
+	 * set, otherwise "Roll #{id} ({start}–{last})".
+	 *
+	 * @param object $row A ticket row object from TicketRepository::findAll().
+	 *
+	 * @return string
+	 */
+	private function formatCsvRollLabel( object $row ): string {
+		if ( ! isset( $row->roll_id ) || null === $row->roll_id ) {
+			return '';
+		}
+
+		$range = ( isset( $row->roll_start, $row->roll_last ) )
+			? sprintf( '%s-%s', $row->roll_start, $row->roll_last )
+			: '';
+
+		$name = ( isset( $row->roll_label ) && '' !== (string) $row->roll_label )
+			? (string) $row->roll_label
+			/* translators: %d: roll database ID */
+			: sprintf( __( 'Roll #%d', 'wp-woocommerce-raffle-ticket' ), (int) $row->roll_id );
+
+		return '' !== $range
+			? sprintf( '%s (%s)', $name, $range )
+			: $name;
 	}
 }

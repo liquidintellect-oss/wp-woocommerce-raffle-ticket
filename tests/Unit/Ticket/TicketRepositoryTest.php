@@ -211,6 +211,19 @@ class TicketRepositoryTest extends TestCase {
 		$this->assertStringContainsString( '42', $query );
 	}
 
+	/** @test */
+	public function find_by_order_query_joins_rolls_table(): void {
+		$this->wpdb_spy->setGetResultsReturn( array() );
+
+		$this->repo->findByOrder( 10 );
+
+		$query = $this->wpdb_spy->queries[0];
+		$this->assertStringContainsString( 'raffle_ticket_rolls', $query );
+		$this->assertStringContainsString( 'roll_label', $query );
+		$this->assertStringContainsString( 'roll_start', $query );
+		$this->assertStringContainsString( 'roll_last', $query );
+	}
+
 	// ── findAll() ─────────────────────────────────────────────────────────────
 
 	/** @test */
@@ -229,6 +242,19 @@ class TicketRepositoryTest extends TestCase {
 		$this->repo->findAll();
 
 		$this->assertStringContainsString( 'wp_posts', $this->wpdb_spy->queries[0] );
+	}
+
+	/** @test */
+	public function find_all_query_joins_rolls_table_and_selects_roll_columns(): void {
+		$this->wpdb_spy->setGetResultsReturn( array() );
+
+		$this->repo->findAll();
+
+		$query = $this->wpdb_spy->queries[0];
+		$this->assertStringContainsString( 'raffle_ticket_rolls', $query );
+		$this->assertStringContainsString( 'roll_label', $query );
+		$this->assertStringContainsString( 'roll_start', $query );
+		$this->assertStringContainsString( 'roll_last', $query );
 	}
 
 	// ── hasAssignedTicketsForOrder() ──────────────────────────────────────────
