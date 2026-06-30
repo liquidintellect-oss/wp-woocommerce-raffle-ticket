@@ -3,7 +3,7 @@
 use PHPUnit\Framework\TestCase;
 use WpWoocommerceRaffleTicket\Order\OrderHandler;
 use WpWoocommerceRaffleTicket\Product\ProductSettings;
-use WpWoocommerceRaffleTicket\Ticket\SequenceRepository;
+use WpWoocommerceRaffleTicket\Ticket\RollRepository;
 use WpWoocommerceRaffleTicket\Ticket\TicketNumber;
 use WpWoocommerceRaffleTicket\Ticket\TicketNumberGenerator;
 use WpWoocommerceRaffleTicket\Ticket\TicketRepository;
@@ -56,38 +56,37 @@ class WcOrderStub extends WC_Order {
 class OrderHandlerTest extends TestCase {
 
 	private TicketRepository $ticket_repo;
-	private SequenceRepository $seq_repo;
+	private RollRepository $roll_repo;
 	private TicketNumberGenerator $generator;
 	private OrderHandler $handler;
 
 	public function setUp(): void {
 		WP_Mock::setUp();
 		$this->ticket_repo = $this->createMock( TicketRepository::class );
-		$this->seq_repo    = $this->createMock( SequenceRepository::class );
+		$this->roll_repo   = $this->createMock( RollRepository::class );
 		$this->generator   = $this->createMock( TicketNumberGenerator::class );
-		$this->handler     = new OrderHandler( $this->ticket_repo, $this->seq_repo, $this->generator );
+		$this->handler     = new OrderHandler( $this->ticket_repo, $this->roll_repo, $this->generator );
 	}
 
 	public function tearDown(): void {
 		WP_Mock::tearDown();
 	}
 
-	private function mockProductMeta( int $product_id, bool $enabled, string $prefix = 'R-', int $min = 1, int $max = 100 ): void {
+	private function mockProductMeta( int $product_id, bool $enabled, string $prefix = 'R-' ): void {
 		WP_Mock::userFunction( 'get_post_meta', array( 'args' => array( $product_id, ProductSettings::META_ENABLED, true ), 'return' => $enabled ? '1' : '' ) );
 		WP_Mock::userFunction( 'get_post_meta', array( 'args' => array( $product_id, ProductSettings::META_PREFIX, true ), 'return' => $prefix ) );
-		WP_Mock::userFunction( 'get_post_meta', array( 'args' => array( $product_id, ProductSettings::META_MIN_SEQUENCE, true ), 'return' => (string) $min ) );
-		WP_Mock::userFunction( 'get_post_meta', array( 'args' => array( $product_id, ProductSettings::META_MAX_SEQUENCE, true ), 'return' => (string) $max ) );
 	}
 
 	/** @test */
-	public function handle_returns_early_when_tickets_already_exist(): void {
+	public function handle_returns_early_when_assigned_tickets_already_exist(): void {
 		$this->ticket_repo
 			->expects( $this->once() )
-			->method( 'hasTicketsForOrder' )
+			->method( 'hasAssignedTicketsForOrder' )
 			->with( 99 )
 			->willReturn( true );
 
 		$this->ticket_repo->expects( $this->never() )->method( 'save' );
+		$this->ticket_repo->expects( $this->never() )->method( 'saveUnassigned' );
 
 		WP_Mock::userFunction( 'wc_get_order', array( 'times' => 0 ) );
 
@@ -96,7 +95,8 @@ class OrderHandlerTest extends TestCase {
 
 	/** @test */
 	public function handle_returns_early_when_order_not_found(): void {
-		$this->ticket_repo->method( 'hasTicketsForOrder' )->willReturn( false );
+		$this->ticket_repo->method( 'hasAssignedTicketsForOrder' )->willReturn( false );
+		$this->ticket_repo->method( 'deleteUnassignedForOrder' ); // no-op.
 
 		WP_Mock::userFunction( 'wc_get_order', array( 'args' => array( 1 ), 'return' => false ) );
 
@@ -106,17 +106,33 @@ class OrderHandlerTest extends TestCase {
 	}
 
 	/** @test */
+	public function handle_deletes_pending_before_reassigning(): void {
+		$item  = new WcOrderItemStub( 10, 1, 'Raffle' );
+		$order = new WcOrderStub( 1, 5, array( 99 => $item ) );
+
+		$this->ticket_repo->method( 'hasAssignedTicketsForOrder' )->willReturn( false );
+		$this->ticket_repo->expects( $this->once() )->method( 'deleteUnassignedForOrder' )->with( 1 );
+
+		WP_Mock::userFunction( 'wc_get_order', array( 'return' => $order ) );
+		$this->mockProductMeta( 10, false );
+
+		$this->handler->handle( 1 );
+	}
+
+	/** @test */
 	public function handle_skips_non_raffle_products(): void {
 		$item  = new WcOrderItemStub( 10, 1, 'Regular Product' );
 		$order = new WcOrderStub( 1, 5, array( 99 => $item ) );
 
-		$this->ticket_repo->method( 'hasTicketsForOrder' )->willReturn( false );
+		$this->ticket_repo->method( 'hasAssignedTicketsForOrder' )->willReturn( false );
+		$this->ticket_repo->method( 'deleteUnassignedForOrder' );
 
 		WP_Mock::userFunction( 'wc_get_order', array( 'return' => $order ) );
 		$this->mockProductMeta( 10, false ); // Not a raffle product.
 
-		$this->seq_repo->expects( $this->never() )->method( 'nextSequence' );
+		$this->roll_repo->expects( $this->never() )->method( 'nextTicket' );
 		$this->ticket_repo->expects( $this->never() )->method( 'save' );
+		$this->ticket_repo->expects( $this->never() )->method( 'saveUnassigned' );
 
 		$this->handler->handle( 1 );
 	}
@@ -126,13 +142,16 @@ class OrderHandlerTest extends TestCase {
 		$item  = new WcOrderItemStub( 10, 3, 'Raffle Product' ); // qty = 3.
 		$order = new WcOrderStub( 1, 5, array( 99 => $item ) );
 
-		$this->ticket_repo->method( 'hasTicketsForOrder' )->willReturn( false );
+		$this->ticket_repo->method( 'hasAssignedTicketsForOrder' )->willReturn( false );
+		$this->ticket_repo->method( 'deleteUnassignedForOrder' );
 
 		WP_Mock::userFunction( 'wc_get_order', array( 'return' => $order ) );
-		$this->mockProductMeta( 10, true, 'R-', 1, 100 );
+		$this->mockProductMeta( 10, true, 'R-' );
+
+		$slot = array( 'roll_id' => 1, 'start_number' => 1, 'ticket_count' => 100, 'offset' => 1 );
+		$this->roll_repo->method( 'nextTicket' )->willReturn( $slot );
 
 		$ticket = new TicketNumber( 'R-', 1, 'R-001' );
-		$this->seq_repo->method( 'nextSequence' )->willReturn( 1 );
 		$this->generator->method( 'generate' )->willReturn( $ticket );
 
 		// save() must be called once per quantity unit (3 times).
@@ -142,89 +161,68 @@ class OrderHandlerTest extends TestCase {
 	}
 
 	/** @test */
-	public function handle_adds_order_note_when_sold_out(): void {
-		$item  = new WcOrderItemStub( 10, 1, 'Raffle Product' );
+	public function handle_saves_unassigned_when_no_rolls_available(): void {
+		$item  = new WcOrderItemStub( 10, 2, 'Raffle Product' );
 		$order = new WcOrderStub( 1, 5, array( 99 => $item ) );
 
-		$this->ticket_repo->method( 'hasTicketsForOrder' )->willReturn( false );
+		$this->ticket_repo->method( 'hasAssignedTicketsForOrder' )->willReturn( false );
+		$this->ticket_repo->method( 'deleteUnassignedForOrder' );
 
 		WP_Mock::userFunction( 'wc_get_order', array( 'return' => $order ) );
-		$this->mockProductMeta( 10, true, 'R-', 1, 100 );
-		WP_Mock::userFunction( 'esc_html__', array( 'return_arg' => 0 ) );
-		WP_Mock::userFunction( 'esc_html', array( 'return_arg' => 0 ) );
+		$this->mockProductMeta( 10, true, 'R-' );
 
-		$this->seq_repo->method( 'nextSequence' )->willThrowException( new RuntimeException( 'sold_out' ) );
+		// No rolls available.
+		$this->roll_repo->method( 'nextTicket' )->willReturn( null );
+
+		// 2 units, each becomes an unassigned placeholder.
+		$this->ticket_repo->expects( $this->exactly( 2 ) )->method( 'saveUnassigned' );
+		$this->ticket_repo->expects( $this->never() )->method( 'save' );
 
 		$this->handler->handle( 1 );
-
-		$this->assertCount( 1, $order->getNotes() );
-		$this->assertStringContainsString( 'Raffle Product', $order->getNotes()[0] );
 	}
 
 	/** @test */
-	public function handle_passes_customer_id_to_save(): void {
+	public function handle_passes_roll_id_to_save(): void {
 		$item  = new WcOrderItemStub( 10, 1, 'Raffle' );
 		$order = new WcOrderStub( 1, 77, array( 55 => $item ) ); // customer_id = 77.
 
-		$this->ticket_repo->method( 'hasTicketsForOrder' )->willReturn( false );
+		$this->ticket_repo->method( 'hasAssignedTicketsForOrder' )->willReturn( false );
+		$this->ticket_repo->method( 'deleteUnassignedForOrder' );
 
 		WP_Mock::userFunction( 'wc_get_order', array( 'return' => $order ) );
-		$this->mockProductMeta( 10, true, 'R-', 1, 100 );
+		$this->mockProductMeta( 10, true, 'R-' );
 
-		$ticket = new TicketNumber( 'R-', 1, 'R-001' );
-		$this->seq_repo->method( 'nextSequence' )->willReturn( 1 );
+		$slot = array( 'roll_id' => 7, 'start_number' => 1001, 'ticket_count' => 500, 'offset' => 1 );
+		$this->roll_repo->method( 'nextTicket' )->willReturn( $slot );
+
+		$ticket = new TicketNumber( 'R-', 1001, 'R-1001' );
 		$this->generator->method( 'generate' )->willReturn( $ticket );
 
 		$this->ticket_repo
 			->expects( $this->once() )
 			->method( 'save' )
-			->with( $ticket, 1, 55, 77, 10 );
+			->with( $ticket, 1, 55, 77, 10, 7 );
 
 		$this->handler->handle( 1 );
 	}
 
 	/** @test */
-	public function validate_cart_add_returns_passed_for_non_raffle_product(): void {
-		$this->mockProductMeta( 5, false );
+	public function handle_does_not_block_sale_when_rolls_exhausted(): void {
+		// Verify no exception is thrown when rolls run out.
+		$item  = new WcOrderItemStub( 10, 1, 'Raffle' );
+		$order = new WcOrderStub( 1, 5, array( 99 => $item ) );
 
-		$result = $this->handler->validateCartAdd( true, 5, 1 );
+		$this->ticket_repo->method( 'hasAssignedTicketsForOrder' )->willReturn( false );
+		$this->ticket_repo->method( 'deleteUnassignedForOrder' );
 
-		$this->assertTrue( $result );
-	}
+		WP_Mock::userFunction( 'wc_get_order', array( 'return' => $order ) );
+		$this->mockProductMeta( 10, true, 'R-' );
 
-	/** @test */
-	public function validate_cart_add_allows_when_capacity_available(): void {
-		$this->mockProductMeta( 5, true, 'R-', 1, 100 );
-		$this->seq_repo->method( 'remaining' )->willReturn( 50 );
+		$this->roll_repo->method( 'nextTicket' )->willReturn( null );
+		$this->ticket_repo->method( 'saveUnassigned' ); // Should be called without exception.
 
-		$result = $this->handler->validateCartAdd( true, 5, 3 );
-
-		$this->assertTrue( $result );
-	}
-
-	/** @test */
-	public function validate_cart_add_blocks_when_insufficient_capacity(): void {
-		$this->mockProductMeta( 5, true, 'R-', 1, 10 );
-		$this->seq_repo->method( 'remaining' )->willReturn( 2 );
-
-		WP_Mock::userFunction( 'wc_add_notice', array( 'times' => 1 ) );
-		WP_Mock::userFunction( 'esc_html__', array( 'return_arg' => 0 ) );
-
-		$result = $this->handler->validateCartAdd( true, 5, 5 ); // Wants 5, only 2 left.
-
-		$this->assertFalse( $result );
-	}
-
-	/** @test */
-	public function validate_cart_add_blocks_when_sold_out(): void {
-		$this->mockProductMeta( 5, true, 'R-', 1, 10 );
-		$this->seq_repo->method( 'remaining' )->willReturn( 0 );
-
-		WP_Mock::userFunction( 'wc_add_notice', array( 'times' => 1 ) );
-		WP_Mock::userFunction( 'esc_html__', array( 'return_arg' => 0 ) );
-
-		$result = $this->handler->validateCartAdd( true, 5, 1 );
-
-		$this->assertFalse( $result );
+		// If no exception is thrown, the test passes.
+		$this->handler->handle( 1 );
+		$this->assertTrue( true );
 	}
 }

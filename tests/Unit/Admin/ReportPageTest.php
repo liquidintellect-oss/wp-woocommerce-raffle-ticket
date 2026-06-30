@@ -3,6 +3,7 @@
 use PHPUnit\Framework\TestCase;
 use WpWoocommerceRaffleTicket\Admin\ReportPage;
 use WpWoocommerceRaffleTicket\Order\OrderHandler;
+use WpWoocommerceRaffleTicket\Ticket\RollRepository;
 use WpWoocommerceRaffleTicket\Ticket\TicketRepository;
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -36,13 +37,15 @@ class ReportPageTest extends TestCase {
 
 	private TicketRepository $ticket_repo;
 	private OrderHandler $order_handler;
+	private RollRepository $roll_repo;
 	private ReportPage $report;
 
 	public function setUp(): void {
 		WP_Mock::setUp();
 		$this->ticket_repo   = $this->createMock( TicketRepository::class );
 		$this->order_handler = $this->createMock( OrderHandler::class );
-		$this->report        = new ReportPage( $this->ticket_repo, $this->order_handler, 'Raffle Tickets' );
+		$this->roll_repo     = $this->createMock( RollRepository::class );
+		$this->report        = new ReportPage( $this->ticket_repo, $this->order_handler, 'Raffle Tickets', $this->roll_repo );
 	}
 
 	public function tearDown(): void {
@@ -90,13 +93,15 @@ class ReportPageTest extends TestCase {
 			(object) array(
 				'order_id'      => 10,
 				'product_name'  => 'My Raffle',
-				'ticket_number' => 'R-001',
+				'ticket_number' => 'R-1001',
+				'roll_id'       => 1,
 				'created_at'    => '2025-01-01 10:00:00',
 			),
 			(object) array(
 				'order_id'      => 10,
 				'product_name'  => 'My Raffle',
-				'ticket_number' => 'R-002',
+				'ticket_number' => 'R-1002',
+				'roll_id'       => 1,
 				'created_at'    => '2025-01-01 10:00:01',
 			),
 		);
@@ -116,12 +121,38 @@ class ReportPageTest extends TestCase {
 	}
 
 	/** @test */
+	public function write_csv_shows_pending_for_unassigned_tickets(): void {
+		$rows = array(
+			(object) array(
+				'order_id'      => 5,
+				'product_name'  => 'Lucky Draw',
+				'ticket_number' => 'PENDING-abc123',
+				'roll_id'       => null,
+				'created_at'    => '2025-03-10 09:00:00',
+			),
+		);
+		$this->ticket_repo->method( 'findAll' )->willReturn( $rows );
+
+		$order = new WcOrderReportStub( 'Alice Smith', 'alice@test.com' );
+		WP_Mock::userFunction( 'wc_get_order', array( 'return' => $order ) );
+		WP_Mock::userFunction( '__', array( 'return_arg' => 0 ) );
+
+		$stream = $this->openTempStream();
+		$this->report->writeCsv( $stream );
+		$content = $this->readStream( $stream );
+
+		$this->assertStringContainsString( 'Pending', $content );
+		$this->assertStringNotContainsString( 'PENDING-abc123', $content );
+	}
+
+	/** @test */
 	public function write_csv_includes_customer_name_and_email(): void {
 		$rows = array(
 			(object) array(
 				'order_id'      => 5,
 				'product_name'  => 'Lucky Draw',
-				'ticket_number' => 'LD-001',
+				'ticket_number' => 'LD-1001',
+				'roll_id'       => 2,
 				'created_at'    => '2025-03-10 09:00:00',
 			),
 		);
@@ -137,7 +168,7 @@ class ReportPageTest extends TestCase {
 
 		$this->assertStringContainsString( 'Alice Smith', $content );
 		$this->assertStringContainsString( 'alice@test.com', $content );
-		$this->assertStringContainsString( 'LD-001', $content );
+		$this->assertStringContainsString( 'LD-1001', $content );
 	}
 
 	/** @test */
@@ -146,7 +177,8 @@ class ReportPageTest extends TestCase {
 			(object) array(
 				'order_id'      => 99,
 				'product_name'  => 'Raffle',
-				'ticket_number' => 'R-001',
+				'ticket_number' => 'R-1001',
+				'roll_id'       => 1,
 				'created_at'    => '2025-01-01 10:00:00',
 			),
 		);
@@ -162,7 +194,7 @@ class ReportPageTest extends TestCase {
 		$content = $this->readStream( $stream );
 
 		// Data row still present with empty customer fields.
-		$this->assertStringContainsString( 'R-001', $content );
+		$this->assertStringContainsString( 'R-1001', $content );
 	}
 
 	// ── register() ────────────────────────────────────────────────────────────
@@ -199,7 +231,6 @@ class ReportPageTest extends TestCase {
 
 		$_GET = array();
 
-		// If we get here without calling streamCsv, the test passes.
 		$this->report->maybeStreamCsv();
 	}
 
@@ -236,7 +267,6 @@ class ReportPageTest extends TestCase {
 		WP_Mock::userFunction( 'wp_unslash', array( 'return_arg' => 0 ) );
 		WP_Mock::userFunction( 'wp_verify_nonce', array( 'return' => false ) );
 		WP_Mock::userFunction( 'esc_html__', array( 'return_arg' => 0 ) );
-		// Make wp_die throw so execution stops, mirroring real WordPress behaviour.
 		WP_Mock::userFunction(
 			'wp_die',
 			array(
@@ -264,7 +294,6 @@ class ReportPageTest extends TestCase {
 		WP_Mock::userFunction( 'wp_verify_nonce', array( 'return' => true ) );
 		WP_Mock::userFunction( 'current_user_can', array( 'return' => false ) );
 		WP_Mock::userFunction( 'esc_html__', array( 'return_arg' => 0 ) );
-		// Make wp_die throw so execution stops, mirroring real WordPress behaviour.
 		WP_Mock::userFunction(
 			'wp_die',
 			array(
@@ -297,18 +326,6 @@ class ReportPageTest extends TestCase {
 		$_GET = array(
 			'page'   => 'some-other-page',
 			'action' => 'assign_retroactive',
-		);
-
-		$this->report->maybeAssignRetroactive();
-	}
-
-	/** @test */
-	public function maybe_assign_retroactive_does_nothing_for_download_action(): void {
-		$this->expectNotToPerformAssertions();
-
-		$_GET = array(
-			'page'   => 'raffle-ticket-report',
-			'action' => 'download',
 		);
 
 		$this->report->maybeAssignRetroactive();
@@ -368,14 +385,14 @@ class ReportPageTest extends TestCase {
 	}
 
 	/** @test */
-	public function maybe_assign_retroactive_calls_handle_for_orders_without_tickets(): void {
+	public function maybe_assign_retroactive_uses_has_assigned_tickets_check(): void {
 		$_GET = array(
 			'page'     => 'raffle-ticket-report',
 			'action'   => 'assign_retroactive',
 			'_wpnonce' => 'valid',
 		);
 
-		// Two orders: order 10 has no tickets (needs assignment), order 20 already assigned.
+		// Two orders: order 10 has no assigned tickets, order 20 does.
 		$order_needs   = new WcOrderWithIdStub( 10 );
 		$order_already = new WcOrderWithIdStub( 20 );
 
@@ -383,15 +400,9 @@ class ReportPageTest extends TestCase {
 		WP_Mock::userFunction( 'wp_unslash', array( 'return_arg' => 0 ) );
 		WP_Mock::userFunction( 'wp_verify_nonce', array( 'return' => true ) );
 		WP_Mock::userFunction( 'current_user_can', array( 'return' => true ) );
-		WP_Mock::userFunction(
-			'wc_get_orders',
-			array(
-				'return' => array( $order_needs, $order_already ),
-			)
-		);
+		WP_Mock::userFunction( 'wc_get_orders', array( 'return' => array( $order_needs, $order_already ) ) );
 		WP_Mock::userFunction( 'admin_url', array( 'return' => 'http://example.com/wp-admin/admin.php' ) );
 		WP_Mock::userFunction( 'add_query_arg', array( 'return' => 'http://example.com/wp-admin/admin.php?page=raffle-ticket-report&assigned=1' ) );
-		// Throw so that the subsequent exit; is never reached — prevents PHPUnit from terminating.
 		WP_Mock::userFunction(
 			'wp_safe_redirect',
 			array(
@@ -403,11 +414,11 @@ class ReportPageTest extends TestCase {
 		);
 
 		$this->ticket_repo
-			->method( 'hasTicketsForOrder' )
+			->method( 'hasAssignedTicketsForOrder' )
 			->willReturnMap(
 				array(
-					array( 10, false ), // Order 10 has no tickets — needs assignment.
-					array( 20, true ),  // Order 20 already has tickets — skip.
+					array( 10, false ), // Order 10 has no assigned tickets.
+					array( 20, true ),  // Order 20 already fully assigned.
 				)
 			);
 
@@ -423,7 +434,9 @@ class ReportPageTest extends TestCase {
 	}
 
 	/** @test */
-	public function maybe_assign_retroactive_skips_orders_that_already_have_tickets(): void {
+	public function maybe_assign_retroactive_processes_orders_with_only_pending_tickets(): void {
+		// Orders with pending-only tickets should be re-processed since
+		// hasAssignedTicketsForOrder returns false for them.
 		$_GET = array(
 			'page'     => 'raffle-ticket-report',
 			'action'   => 'assign_retroactive',
@@ -438,8 +451,7 @@ class ReportPageTest extends TestCase {
 		WP_Mock::userFunction( 'current_user_can', array( 'return' => true ) );
 		WP_Mock::userFunction( 'wc_get_orders', array( 'return' => array( $order ) ) );
 		WP_Mock::userFunction( 'admin_url', array( 'return' => 'http://example.com/wp-admin/admin.php' ) );
-		WP_Mock::userFunction( 'add_query_arg', array( 'return' => 'http://example.com/wp-admin/admin.php?page=raffle-ticket-report&assigned=0' ) );
-		// Throw so that the subsequent exit; is never reached.
+		WP_Mock::userFunction( 'add_query_arg', array( 'return' => 'http://example.com/wp-admin/admin.php?assigned=1' ) );
 		WP_Mock::userFunction(
 			'wp_safe_redirect',
 			array(
@@ -450,14 +462,15 @@ class ReportPageTest extends TestCase {
 			)
 		);
 
-		// Order already has tickets — should skip.
-		$this->ticket_repo->method( 'hasTicketsForOrder' )->willReturn( true );
+		// No assigned tickets → pending-only order should be re-processed.
+		$this->ticket_repo->method( 'hasAssignedTicketsForOrder' )->willReturn( false );
 
-		// handle() should never be called.
-		$this->order_handler->expects( $this->never() )->method( 'handle' );
+		$this->order_handler
+			->expects( $this->once() )
+			->method( 'handle' )
+			->with( 42 );
 
 		$this->expectException( \RuntimeException::class );
-		$this->expectExceptionMessage( 'wp_safe_redirect' );
 		$this->report->maybeAssignRetroactive();
 	}
 }

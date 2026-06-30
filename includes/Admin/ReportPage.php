@@ -14,6 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 use WpWoocommerceRaffleTicket\Order\OrderHandler;
 use WpWoocommerceRaffleTicket\Ticket\TicketRepository;
 use WpWoocommerceRaffleTicket\Admin\PluginSettings;
+use WpWoocommerceRaffleTicket\Ticket\RollRepository;
 
 /**
  * Class ReportPage
@@ -32,14 +33,16 @@ class ReportPage {
 	/**
 	 * Constructor.
 	 *
-	 * @param TicketRepository $ticket_repo Ticket retrieval layer.
+	 * @param TicketRepository $ticket_repo   Ticket retrieval layer.
 	 * @param OrderHandler     $order_handler Order handler for retroactive assignment.
-	 * @param string           $label       Configurable display label (e.g. "Raffle Tickets").
+	 * @param string           $label         Configurable display label (e.g. "Raffle Tickets").
+	 * @param RollRepository   $roll_repo     Roll repository for overflow detection.
 	 */
 	public function __construct(
 		private TicketRepository $ticket_repo,
 		private OrderHandler $order_handler,
-		private string $label
+		private string $label,
+		private RollRepository $roll_repo
 	) {}
 
 	/**
@@ -144,7 +147,7 @@ class ReportPage {
 
 		foreach ( $orders as $order ) {
 			$order_id = (int) $order->get_id();
-			if ( ! $this->ticket_repo->hasTicketsForOrder( $order_id ) ) {
+			if ( ! $this->ticket_repo->hasAssignedTicketsForOrder( $order_id ) ) {
 				$this->order_handler->handle( $order_id );
 				++$assigned;
 			}
@@ -185,6 +188,8 @@ class ReportPage {
 		$assigned         = isset( $_GET['assigned'] ) ? (int) $_GET['assigned'] : null;
 		$settings_updated = isset( $_GET['settings-updated'] );
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+
+		$overflow_product_ids = $this->ticket_repo->findProductsWithUnassignedTickets();
 		?>
 		<div class="wrap">
 			<h1>
@@ -193,6 +198,32 @@ class ReportPage {
 			echo esc_html( sprintf( __( '%s Report', 'wp-woocommerce-raffle-ticket' ), $this->label ) );
 			?>
 			</h1>
+
+			<?php if ( ! empty( $overflow_product_ids ) ) : ?>
+				<div class="notice notice-warning">
+					<p>
+						<strong><?php esc_html_e( 'Attention: tickets pending roll assignment', 'wp-woocommerce-raffle-ticket' ); ?></strong>
+					</p>
+					<p>
+						<?php
+						esc_html_e(
+							'The following products have orders that could not be assigned a physical ticket number because no rolls with remaining capacity were available. Add rolls and then click "Assign Missing Tickets" to resolve.',
+							'wp-woocommerce-raffle-ticket'
+						);
+						?>
+					</p>
+					<ul>
+					<?php foreach ( $overflow_product_ids as $product_id ) : ?>
+						<li>
+							<?php
+							$post = get_post( $product_id );
+							echo esc_html( $post ? $post->post_title : '#' . $product_id );
+							?>
+						</li>
+					<?php endforeach; ?>
+					</ul>
+				</div>
+			<?php endif; ?>
 
 			<?php if ( null !== $assigned ) : ?>
 				<div class="notice notice-success is-dismissible">
@@ -319,6 +350,11 @@ class ReportPage {
 			$customer_name  = $order ? $order->get_formatted_billing_full_name() : '';
 			$customer_email = $order ? $order->get_billing_email() : '';
 
+			// Show a human-readable label for pending (unassigned) tickets.
+			$ticket_number = null === $row->roll_id
+				? __( 'Pending', 'wp-woocommerce-raffle-ticket' )
+				: $row->ticket_number;
+
 			fputcsv(
 				$stream,
 				array(
@@ -326,7 +362,7 @@ class ReportPage {
 					$customer_name,
 					$customer_email,
 					$row->product_name ?? '',
-					$row->ticket_number,
+					$ticket_number,
 					$row->created_at,
 				),
 				',',

@@ -31,8 +31,6 @@ class ProductMetaBoxTest extends TestCase {
 	private function mockProductMeta( int $product_id ): void {
 		WP_Mock::userFunction( 'get_post_meta', array( 'args' => array( $product_id, ProductSettings::META_ENABLED, true ), 'return' => '1' ) );
 		WP_Mock::userFunction( 'get_post_meta', array( 'args' => array( $product_id, ProductSettings::META_PREFIX, true ), 'return' => 'RAFFLE-' ) );
-		WP_Mock::userFunction( 'get_post_meta', array( 'args' => array( $product_id, ProductSettings::META_MIN_SEQUENCE, true ), 'return' => '1' ) );
-		WP_Mock::userFunction( 'get_post_meta', array( 'args' => array( $product_id, ProductSettings::META_MAX_SEQUENCE, true ), 'return' => '9999' ) );
 	}
 
 	/** @test */
@@ -100,22 +98,20 @@ class ProductMetaBoxTest extends TestCase {
 	}
 
 	/** @test */
-	public function save_calls_update_post_meta_four_times_on_success(): void {
+	public function save_calls_update_post_meta_twice_on_success(): void {
 		$_POST[ ProductMetaBox::NONCE_FIELD ] = 'valid';
 		$_POST['raffle_ticket_enabled']       = '1';
 		$_POST['raffle_ticket_prefix']        = 'RAFFLE-';
-		$_POST['raffle_ticket_min_sequence']  = '1';
-		$_POST['raffle_ticket_max_sequence']  = '9999';
 
 		WP_Mock::userFunction( 'sanitize_text_field', array( 'return_arg' => 0 ) );
 		WP_Mock::userFunction( 'wp_unslash', array( 'return_arg' => 0 ) );
 		WP_Mock::userFunction( 'wp_verify_nonce', array( 'return' => true ) );
 		WP_Mock::userFunction( 'current_user_can', array( 'return' => true ) );
-		WP_Mock::userFunction( 'update_post_meta', array( 'times' => 4, 'return' => true ) );
+		WP_Mock::userFunction( 'update_post_meta', array( 'times' => 2, 'return' => true ) );
 
 		$this->meta_box->save( 42 );
 
-		// Assertion satisfied by WP_Mock verifying times => 4 at tearDown.
+		// Assertion satisfied by WP_Mock verifying times => 2 at tearDown.
 		$this->assertTrue( true );
 	}
 
@@ -123,8 +119,6 @@ class ProductMetaBoxTest extends TestCase {
 	public function save_writes_empty_string_for_disabled_product(): void {
 		$_POST[ ProductMetaBox::NONCE_FIELD ] = 'valid';
 		$_POST['raffle_ticket_prefix']        = 'X-';
-		$_POST['raffle_ticket_min_sequence']  = '1';
-		$_POST['raffle_ticket_max_sequence']  = '100';
 		// 'raffle_ticket_enabled' intentionally absent.
 
 		WP_Mock::userFunction( 'sanitize_text_field', array( 'return_arg' => 0 ) );
@@ -136,7 +130,7 @@ class ProductMetaBoxTest extends TestCase {
 		WP_Mock::userFunction(
 			'update_post_meta',
 			array(
-				'times'  => 4,
+				'times'  => 2,
 				'return' => function ( $post_id, $key, $value ) use ( &$updated ) {
 					$updated[ $key ] = $value;
 					return true;
