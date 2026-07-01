@@ -13,7 +13,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 use WpWoocommerceRaffleTicket\Admin\PluginSettings;
 use WpWoocommerceRaffleTicket\Admin\ReportPage;
-use WpWoocommerceRaffleTicket\Admin\RollsPage;
 use WpWoocommerceRaffleTicket\Order\OrderDisplay;
 use WpWoocommerceRaffleTicket\Order\OrderHandler;
 use WpWoocommerceRaffleTicket\Product\ProductMetaBox;
@@ -42,7 +41,6 @@ class Plugin {
 		$order_display   = new OrderDisplay( $ticket_repo, $label );
 		$meta_box        = new ProductMetaBox( $label );
 		$report_page     = new ReportPage( $ticket_repo, $order_handler, $label, $roll_repo );
-		$rolls_page      = new RollsPage( $roll_repo, $label );
 		$plugin_settings = new PluginSettings();
 
 		// Assign tickets when payment is received.
@@ -62,14 +60,12 @@ class Plugin {
 		// Register the ticket-label option with the WordPress Settings API.
 		$plugin_settings->register();
 
-		// Admin report / CSV export + retroactive ticket assignment.
+		// Admin page: Report tab (CSV export + retroactive assignment),
+		// Rolls tab (roll add / delete), and Settings tab (ticket label).
 		add_action( 'admin_menu', array( $report_page, 'register' ) );
 		add_action( 'admin_init', array( $report_page, 'maybeStreamCsv' ) );
 		add_action( 'admin_init', array( $report_page, 'maybeAssignRetroactive' ) );
-
-		// Admin roll management page.
-		add_action( 'admin_menu', array( $rolls_page, 'register' ) );
-		add_action( 'admin_init', array( $rolls_page, 'maybeAddRoll' ) );
-		add_action( 'admin_init', array( $rolls_page, 'maybeDeleteRoll' ) );
+		add_action( 'admin_init', array( $report_page, 'maybeAddRoll' ) );
+		add_action( 'admin_init', array( $report_page, 'maybeDeleteRoll' ) );
 	}
 }

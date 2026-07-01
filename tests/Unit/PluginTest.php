@@ -4,7 +4,6 @@ use PHPUnit\Framework\TestCase;
 use WP_Mock\Matcher\AnyInstance;
 use WpWoocommerceRaffleTicket\Admin\PluginSettings;
 use WpWoocommerceRaffleTicket\Admin\ReportPage;
-use WpWoocommerceRaffleTicket\Admin\RollsPage;
 use WpWoocommerceRaffleTicket\Order\OrderDisplay;
 use WpWoocommerceRaffleTicket\Order\OrderHandler;
 use WpWoocommerceRaffleTicket\Plugin;
@@ -109,18 +108,6 @@ class PluginTest extends TestCase {
 	}
 
 	/** @test */
-	public function register_hooks_rolls_page_to_admin_menu(): void {
-		WP_Mock::expectActionAdded(
-			'admin_menu',
-			array( new AnyInstance( RollsPage::class ), 'register' )
-		);
-
-		( new Plugin() )->register();
-
-		$this->addToAssertionCount( 1 );
-	}
-
-	/** @test */
 	public function register_hooks_admin_init_for_csv_download(): void {
 		WP_Mock::expectActionAdded(
 			'admin_init',
@@ -148,7 +135,7 @@ class PluginTest extends TestCase {
 	public function register_hooks_admin_init_for_add_roll(): void {
 		WP_Mock::expectActionAdded(
 			'admin_init',
-			array( new AnyInstance( RollsPage::class ), 'maybeAddRoll' )
+			array( new AnyInstance( ReportPage::class ), 'maybeAddRoll' )
 		);
 
 		( new Plugin() )->register();
@@ -160,7 +147,7 @@ class PluginTest extends TestCase {
 	public function register_hooks_admin_init_for_delete_roll(): void {
 		WP_Mock::expectActionAdded(
 			'admin_init',
-			array( new AnyInstance( RollsPage::class ), 'maybeDeleteRoll' )
+			array( new AnyInstance( ReportPage::class ), 'maybeDeleteRoll' )
 		);
 
 		( new Plugin() )->register();
