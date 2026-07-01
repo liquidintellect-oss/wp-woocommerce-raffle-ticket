@@ -178,25 +178,16 @@ class ReportPage {
 	}
 
 	/**
-	 * Handle an "Add Roll" form submission during admin_init.
+	 * Handle an "Add Roll" form submission routed via admin-post.php.
 	 *
-	 * Processes POST requests with action=add_roll targeting our page, creates
-	 * the roll record, then redirects back to the Rolls tab.
+	 * Hooked to `admin_post_wrt_add_roll`.  WordPress calls this callback
+	 * automatically when admin-post.php receives a request with
+	 * $_REQUEST['action'] === 'wrt_add_roll', so no manual routing detection
+	 * is needed here.
 	 *
 	 * @return void
 	 */
-	public function maybeAddRoll(): void {
-		// phpcs:disable WordPress.Security.NonceVerification.Recommended
-		if (
-			! isset( $_POST['action'] ) ||
-			'add_roll' !== $_POST['action'] ||
-			! isset( $_POST['raffle_rolls_page'] ) ||
-			self::PAGE_SLUG !== $_POST['raffle_rolls_page']
-		) {
-			// phpcs:enable WordPress.Security.NonceVerification.Recommended
-			return;
-		}
-
+	public function handleAddRoll(): void {
 		$nonce = isset( $_POST['_wpnonce'] )
 			? sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) )
 			: '';
@@ -563,10 +554,9 @@ class ReportPage {
 	public function renderAddForm(): void {
 		$raffle_products = $this->getRaffleProducts();
 		?>
-		<form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=' . self::PAGE_SLUG . '&tab=rolls' ) ); ?>">
+		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 			<?php wp_nonce_field( self::NONCE_ROLL_ADD ); ?>
-			<input type="hidden" name="action" value="add_roll" />
-			<input type="hidden" name="raffle_rolls_page" value="<?php echo esc_attr( self::PAGE_SLUG ); ?>" />
+			<input type="hidden" name="action" value="wrt_add_roll" />
 			<table class="form-table" role="presentation">
 				<tr>
 					<th scope="row">

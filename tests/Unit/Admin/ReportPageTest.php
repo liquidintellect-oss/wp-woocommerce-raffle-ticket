@@ -613,45 +613,12 @@ class ReportPageTest extends TestCase {
 		$this->report->maybeAssignRetroactive();
 	}
 
-	// ── maybeAddRoll() ────────────────────────────────────────────────────────
+	// ── handleAddRoll() ──────────────────────────────────────────────────────
+	// Routed via admin_post_wrt_add_roll — no action/page detection needed.
 
 	/** @test */
-	public function maybe_add_roll_does_nothing_when_action_absent(): void {
-		$this->expectNotToPerformAssertions();
-
-		$_POST = array();
-
-		$this->report->maybeAddRoll();
-	}
-
-	/** @test */
-	public function maybe_add_roll_does_nothing_for_wrong_action(): void {
-		$this->expectNotToPerformAssertions();
-
-		$_POST = array(
-			'action'            => 'delete_roll',
-			'raffle_rolls_page' => ReportPage::PAGE_SLUG,
-		);
-
-		$this->report->maybeAddRoll();
-	}
-
-	/** @test */
-	public function maybe_add_roll_does_nothing_without_page_marker(): void {
-		$this->expectNotToPerformAssertions();
-
-		$_POST = array( 'action' => 'add_roll' );
-
-		$this->report->maybeAddRoll();
-	}
-
-	/** @test */
-	public function maybe_add_roll_dies_on_invalid_nonce(): void {
-		$_POST = array(
-			'action'            => 'add_roll',
-			'raffle_rolls_page' => ReportPage::PAGE_SLUG,
-			'_wpnonce'          => 'bad',
-		);
+	public function handle_add_roll_dies_on_invalid_nonce(): void {
+		$_POST = array( '_wpnonce' => 'bad' );
 
 		WP_Mock::userFunction( 'sanitize_text_field', array( 'return_arg' => 0 ) );
 		WP_Mock::userFunction( 'wp_unslash', array( 'return_arg' => 0 ) );
@@ -668,16 +635,12 @@ class ReportPageTest extends TestCase {
 		);
 
 		$this->expectException( \RuntimeException::class );
-		$this->report->maybeAddRoll();
+		$this->report->handleAddRoll();
 	}
 
 	/** @test */
-	public function maybe_add_roll_dies_when_user_lacks_capability(): void {
-		$_POST = array(
-			'action'            => 'add_roll',
-			'raffle_rolls_page' => ReportPage::PAGE_SLUG,
-			'_wpnonce'          => 'valid',
-		);
+	public function handle_add_roll_dies_when_user_lacks_capability(): void {
+		$_POST = array( '_wpnonce' => 'valid' );
 
 		WP_Mock::userFunction( 'sanitize_text_field', array( 'return_arg' => 0 ) );
 		WP_Mock::userFunction( 'wp_unslash', array( 'return_arg' => 0 ) );
@@ -695,14 +658,12 @@ class ReportPageTest extends TestCase {
 		);
 
 		$this->expectException( \RuntimeException::class );
-		$this->report->maybeAddRoll();
+		$this->report->handleAddRoll();
 	}
 
 	/** @test */
-	public function maybe_add_roll_calls_create_and_redirects(): void {
+	public function handle_add_roll_calls_create_and_redirects(): void {
 		$_POST = array(
-			'action'            => 'add_roll',
-			'raffle_rolls_page' => ReportPage::PAGE_SLUG,
 			'_wpnonce'          => 'valid',
 			'roll_product_id'   => '10',
 			'roll_label'        => 'Roll A',
@@ -737,14 +698,12 @@ class ReportPageTest extends TestCase {
 
 		$this->expectException( \RuntimeException::class );
 		$this->expectExceptionMessage( 'wp_safe_redirect' );
-		$this->report->maybeAddRoll();
+		$this->report->handleAddRoll();
 	}
 
 	/** @test */
-	public function maybe_add_roll_skips_create_when_product_id_is_zero(): void {
+	public function handle_add_roll_skips_create_when_product_id_is_zero(): void {
 		$_POST = array(
-			'action'            => 'add_roll',
-			'raffle_rolls_page' => ReportPage::PAGE_SLUG,
 			'_wpnonce'          => 'valid',
 			'roll_product_id'   => '0',
 			'roll_ticket_count' => '500',
@@ -769,7 +728,7 @@ class ReportPageTest extends TestCase {
 		$this->roll_repo->expects( $this->never() )->method( 'create' );
 
 		$this->expectException( \RuntimeException::class );
-		$this->report->maybeAddRoll();
+		$this->report->handleAddRoll();
 	}
 
 	// ── maybeDeleteRoll() ─────────────────────────────────────────────────────

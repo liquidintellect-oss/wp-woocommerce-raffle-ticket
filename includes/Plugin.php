@@ -65,7 +65,9 @@ class Plugin {
 		add_action( 'admin_menu', array( $report_page, 'register' ) );
 		add_action( 'admin_init', array( $report_page, 'maybeStreamCsv' ) );
 		add_action( 'admin_init', array( $report_page, 'maybeAssignRetroactive' ) );
-		add_action( 'admin_init', array( $report_page, 'maybeAddRoll' ) );
 		add_action( 'admin_init', array( $report_page, 'maybeDeleteRoll' ) );
+
+		// Roll add form posts to admin-post.php with action=wrt_add_roll.
+		add_action( 'admin_post_wrt_add_roll', array( $report_page, 'handleAddRoll' ) );
 	}
 }

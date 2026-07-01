@@ -132,10 +132,10 @@ class PluginTest extends TestCase {
 	}
 
 	/** @test */
-	public function register_hooks_admin_init_for_add_roll(): void {
+	public function register_hooks_admin_post_for_add_roll(): void {
 		WP_Mock::expectActionAdded(
-			'admin_init',
-			array( new AnyInstance( ReportPage::class ), 'maybeAddRoll' )
+			'admin_post_wrt_add_roll',
+			array( new AnyInstance( ReportPage::class ), 'handleAddRoll' )
 		);
 
 		( new Plugin() )->register();
