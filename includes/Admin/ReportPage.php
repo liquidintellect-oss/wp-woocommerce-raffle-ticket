@@ -563,7 +563,7 @@ class ReportPage {
 	public function renderAddForm(): void {
 		$raffle_products = $this->getRaffleProducts();
 		?>
-		<form method="post" action="">
+		<form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=' . self::PAGE_SLUG . '&tab=rolls' ) ); ?>">
 			<?php wp_nonce_field( self::NONCE_ROLL_ADD ); ?>
 			<input type="hidden" name="action" value="add_roll" />
 			<input type="hidden" name="raffle_rolls_page" value="<?php echo esc_attr( self::PAGE_SLUG ); ?>" />
