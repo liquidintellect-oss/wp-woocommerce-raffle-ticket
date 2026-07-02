@@ -275,4 +275,24 @@ class RollRepositoryTest extends TestCase {
 		$this->assertSame( 'wp_raffle_ticket_rolls', $this->wpdb_spy->deletes[0]['table'] );
 		$this->assertSame( 5, $this->wpdb_spy->deletes[0]['where']['id'] );
 	}
+
+	// ── decrementOffset() ────────────────────────────────────────────────────
+
+	/** @test */
+	public function decrement_offset_issues_update_with_greatest(): void {
+		$this->repo->decrementOffset( 3, 5 );
+
+		$this->assertCount( 1, $this->wpdb_spy->queries );
+		$sql = $this->wpdb_spy->queries[0];
+		$this->assertStringContainsString( 'GREATEST', $sql );
+		$this->assertStringContainsString( '5', $sql );  // amount
+		$this->assertStringContainsString( '3', $sql );  // roll id
+	}
+
+	/** @test */
+	public function decrement_offset_does_nothing_when_amount_is_zero(): void {
+		$this->repo->decrementOffset( 3, 0 );
+
+		$this->assertCount( 0, $this->wpdb_spy->queries );
+	}
 }

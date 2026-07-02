@@ -785,11 +785,23 @@ class ReportPageTest extends TestCase {
 			)
 		);
 
-		// deleteAllForOrder must be called once per order — this is what makes overwrite work.
+		// findRollCountsForOrder is consulted first so we know which slots to free.
+		$this->ticket_repo
+			->expects( $this->exactly( 2 ) )
+			->method( 'findRollCountsForOrder' )
+			->willReturn( array( 7 => 3 ) ); // roll 7 had 3 tickets per order.
+
+		// deleteAllForOrder must be called once per order.
 		$this->ticket_repo
 			->expects( $this->exactly( 2 ) )
 			->method( 'deleteAllForOrder' )
 			->withConsecutive( array( 10 ), array( 20 ) );
+
+		// decrementOffset must be called for each roll returned by findRollCountsForOrder.
+		$this->roll_repo
+			->expects( $this->exactly( 2 ) )
+			->method( 'decrementOffset' )
+			->with( 7, 3 );
 
 		// hasAssignedTicketsForOrder must NOT be consulted in overwrite mode.
 		$this->ticket_repo

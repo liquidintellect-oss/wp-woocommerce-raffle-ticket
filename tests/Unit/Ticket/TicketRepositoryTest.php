@@ -198,6 +198,42 @@ class TicketRepositoryTest extends TestCase {
 		$this->assertArrayNotHasKey( 'roll_id', $where );
 	}
 
+	// ── findRollCountsForOrder() ──────────────────────────────────────────────
+
+	/** @test */
+	public function find_roll_counts_for_order_returns_empty_map_when_no_tickets(): void {
+		$this->wpdb_spy->setGetResultsReturn( array() );
+
+		$result = $this->repo->findRollCountsForOrder( 99 );
+
+		$this->assertSame( array(), $result );
+	}
+
+	/** @test */
+	public function find_roll_counts_for_order_maps_roll_id_to_count(): void {
+		$this->wpdb_spy->setGetResultsReturn(
+			array(
+				(object) array( 'roll_id' => '2', 'cnt' => '3' ),
+				(object) array( 'roll_id' => '5', 'cnt' => '1' ),
+			)
+		);
+
+		$result = $this->repo->findRollCountsForOrder( 42 );
+
+		$this->assertSame( array( 2 => 3, 5 => 1 ), $result );
+	}
+
+	/** @test */
+	public function find_roll_counts_for_order_queries_only_assigned_tickets(): void {
+		$this->wpdb_spy->setGetResultsReturn( array() );
+
+		$this->repo->findRollCountsForOrder( 42 );
+
+		$query = $this->wpdb_spy->queries[0];
+		$this->assertStringContainsString( 'roll_id IS NOT NULL', $query );
+		$this->assertStringContainsString( '42', $query );
+	}
+
 	// ── findByOrder() ─────────────────────────────────────────────────────────
 
 	/** @test */

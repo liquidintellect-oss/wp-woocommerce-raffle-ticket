@@ -146,6 +146,41 @@ class TicketRepository {
 	}
 
 	/**
+	 * Return the number of assigned tickets per roll for a given order.
+	 *
+	 * Used before deleteAllForOrder() in the overwrite flow so each roll's
+	 * current_offset can be decremented by the exact number of slots being freed,
+	 * preventing the offset from accumulating across successive overwrite runs.
+	 *
+	 * @param int $order_id The WooCommerce order ID.
+	 *
+	 * @return array<int,int> Map of roll_id → assigned ticket count.
+	 *
+	 * @global \wpdb $wpdb WordPress database abstraction object.
+	 */
+	public function findRollCountsForOrder( int $order_id ): array {
+		global $wpdb;
+
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT roll_id, COUNT(*) AS cnt
+				 FROM {$wpdb->prefix}raffle_tickets
+				 WHERE order_id = %d AND roll_id IS NOT NULL
+				 GROUP BY roll_id",
+				$order_id
+			)
+		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		$map = array();
+		foreach ( $rows ?? array() as $row ) {
+			$map[ (int) $row->roll_id ] = (int) $row->cnt;
+		}
+		return $map;
+	}
+
+	/**
 	 * Delete ALL ticket records for an order (both assigned and pending).
 	 *
 	 * Used by the admin overwrite flow: clears every ticket so that

@@ -205,9 +205,14 @@ class ReportPage {
 			$order_id = (int) $order->get_id();
 
 			if ( $overwrite ) {
-				// Overwrite mode: delete every ticket (assigned + pending) so that
-				// handle() re-assigns from the current rolls from scratch.
+				// Overwrite mode: capture how many assigned slots each roll holds for
+				// this order, return those slots, then delete the tickets so that
+				// handle() re-claims them from the correct offset on this roll.
+				$roll_counts = $this->ticket_repo->findRollCountsForOrder( $order_id );
 				$this->ticket_repo->deleteAllForOrder( $order_id );
+				foreach ( $roll_counts as $roll_id => $count ) {
+					$this->roll_repo->decrementOffset( $roll_id, $count );
+				}
 			} elseif ( $this->ticket_repo->hasAssignedTicketsForOrder( $order_id ) ) {
 				// Normal mode: skip orders that already have assigned tickets.
 				continue;
@@ -613,7 +618,7 @@ class ReportPage {
 					<th><?php esc_html_e( 'Last #', 'wp-woocommerce-raffle-ticket' ); ?></th>
 					<th><?php esc_html_e( 'Assigned', 'wp-woocommerce-raffle-ticket' ); ?></th>
 					<th><?php esc_html_e( 'Remaining', 'wp-woocommerce-raffle-ticket' ); ?></th>
-					<th><?php esc_html_e( 'Order', 'wp-woocommerce-raffle-ticket' ); ?></th>
+					<th><?php esc_html_e( 'Priority', 'wp-woocommerce-raffle-ticket' ); ?></th>
 					<th><?php esc_html_e( 'Actions', 'wp-woocommerce-raffle-ticket' ); ?></th>
 				</tr>
 			</thead>

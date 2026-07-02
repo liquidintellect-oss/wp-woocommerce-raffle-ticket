@@ -210,6 +210,42 @@ class RollRepository {
 	}
 
 	/**
+	 * Decrement a roll's current_offset by the given amount, floored at zero.
+	 *
+	 * Called after tickets are deleted in the overwrite flow so that the freed
+	 * slots can be re-claimed by the next nextTicket() call instead of being
+	 * permanently burned.
+	 *
+	 * @param int $roll_id The roll whose offset to decrement.
+	 * @param int $amount  Number of slots to release (must be positive).
+	 *
+	 * @return void
+	 *
+	 * @global \wpdb $wpdb WordPress database abstraction object.
+	 */
+	public function decrementOffset( int $roll_id, int $amount ): void {
+		if ( $amount <= 0 ) {
+			return;
+		}
+
+		global $wpdb;
+
+		$table = $wpdb->prefix . 'raffle_ticket_rolls';
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$wpdb->query(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"UPDATE {$table}
+				 SET current_offset = GREATEST(0, current_offset - %d)
+				 WHERE id = %d",
+				$amount,
+				$roll_id
+			)
+		);
+	}
+
+	/**
 	 * Delete a roll by its database ID.
 	 *
 	 * @param int $roll_id The roll ID to delete.
