@@ -110,7 +110,7 @@ class OrderDisplay {
 		}
 
 		$range = isset( $ticket->roll_start, $ticket->roll_last )
-			? sprintf( '%s\u{2013}%s', $ticket->roll_start, $ticket->roll_last )
+			? sprintf( "%s\u{2013}%s", $ticket->roll_start, $ticket->roll_last )
 			: '';
 
 		$name = ( isset( $ticket->roll_label ) && '' !== (string) $ticket->roll_label )

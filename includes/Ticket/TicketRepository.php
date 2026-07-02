@@ -146,6 +146,31 @@ class TicketRepository {
 	}
 
 	/**
+	 * Delete ALL ticket records for an order (both assigned and pending).
+	 *
+	 * Used by the admin overwrite flow: clears every ticket so that
+	 * OrderHandler::handle() can re-assign from the current rolls from scratch.
+	 * This is intentionally destructive — callers must confirm intent before
+	 * invoking (e.g. the admin overwrite checkbox).
+	 *
+	 * @param int $order_id The WooCommerce order ID.
+	 *
+	 * @return void
+	 *
+	 * @global \wpdb $wpdb WordPress database abstraction object.
+	 */
+	public function deleteAllForOrder( int $order_id ): void {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->delete(
+			$wpdb->prefix . 'raffle_tickets',
+			array( 'order_id' => $order_id ),
+			array( '%d' )
+		);
+	}
+
+	/**
 	 * Retrieve assigned ticket records for a given order, ordered by sequence.
 	 *
 	 * Only returns rows with a non-NULL roll_id (fully assigned tickets).

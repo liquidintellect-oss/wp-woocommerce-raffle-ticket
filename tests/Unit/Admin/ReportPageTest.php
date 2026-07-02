@@ -8,10 +8,18 @@ use WpWoocommerceRaffleTicket\Ticket\TicketRepository;
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
+class WcOrderDateStub {
+	public function __construct( private string $date_str ) {}
+	public function date( string $format ): string {
+		return $this->date_str;
+	}
+}
+
 class WcOrderReportStub extends WC_Order {
 	public function __construct(
 		private string $name,
-		private string $email
+		private string $email,
+		private string $order_date = '2025-01-01 10:00:00'
 	) {}
 	public function get_formatted_billing_full_name(): string {
 		return $this->name;
@@ -19,15 +27,24 @@ class WcOrderReportStub extends WC_Order {
 	public function get_billing_email(): string {
 		return $this->email;
 	}
+	public function get_date_created(): WcOrderDateStub {
+		return new WcOrderDateStub( $this->order_date );
+	}
 }
 
 /**
- * Order stub that exposes a configurable get_id() for retroactive-assignment tests.
+ * Order stub that exposes a configurable get_id() and order date for retroactive-assignment tests.
  */
 class WcOrderWithIdStub extends WC_Order {
-	public function __construct( private int $id ) {}
+	public function __construct(
+		private int $id,
+		private string $order_date = '2025-06-01'
+	) {}
 	public function get_id(): int {
 		return $this->id;
+	}
+	public function get_date_created(): WcOrderDateStub {
+		return new WcOrderDateStub( $this->order_date );
 	}
 }
 
@@ -305,6 +322,82 @@ class ReportPageTest extends TestCase {
 
 		// Roll column for pending rows should be empty — adjacent commas with no value.
 		$this->assertStringContainsString( 'Pending,,', $content );
+	}
+
+	/** @test */
+	public function write_csv_uses_order_date_not_ticket_date(): void {
+		$rows = array(
+			(object) array(
+				'order_id'      => 11,
+				'product_name'  => 'Test Raffle',
+				'ticket_number' => 'TR-0001',
+				'roll_id'       => 1,
+				'roll_label'    => 'Roll A',
+				'roll_start'    => '1',
+				'roll_last'     => '100',
+				'created_at'    => '2099-12-31 23:59:59', // ticket assignment date — must NOT appear
+			),
+		);
+		$this->ticket_repo->method( 'findAll' )->willReturn( $rows );
+
+		// Order date is 2025-03-15; this is what should appear in the CSV.
+		$order = new WcOrderReportStub( 'Test User', 'test@example.com', '2025-03-15 09:30:00' );
+		WP_Mock::userFunction( 'wc_get_order', array( 'return' => $order ) );
+		WP_Mock::userFunction( '__', array( 'return_arg' => 0 ) );
+
+		$stream = $this->openTempStream();
+		$this->report->writeCsv( $stream );
+		$content = $this->readStream( $stream );
+
+		$this->assertStringContainsString( '2025-03-15', $content );
+		$this->assertStringNotContainsString( '2099-12-31', $content );
+	}
+
+	/** @test */
+	public function write_csv_filters_rows_by_date_range(): void {
+		$make_row = static function ( int $order_id, string $ticket ): object {
+			return (object) array(
+				'order_id'      => $order_id,
+				'product_name'  => 'Raffle',
+				'ticket_number' => $ticket,
+				'roll_id'       => 1,
+				'roll_label'    => 'Roll A',
+				'roll_start'    => '1',
+				'roll_last'     => '100',
+				'created_at'    => '2025-01-01 00:00:00',
+			);
+		};
+
+		$this->ticket_repo->method( 'findAll' )->willReturn(
+			array(
+				$make_row( 1, 'T-BEFORE' ),
+				$make_row( 2, 'T-INSIDE' ),
+				$make_row( 3, 'T-AFTER' ),
+			)
+		);
+
+		WP_Mock::userFunction(
+			'wc_get_order',
+			array(
+				'return' => static function ( int $id ) {
+					$dates = array(
+						1 => '2025-05-15 00:00:00', // before range
+						2 => '2025-06-10 00:00:00', // inside range
+						3 => '2025-07-05 00:00:00', // after range
+					);
+					return new WcOrderReportStub( 'Name', 'email@example.com', $dates[ $id ] );
+				},
+			)
+		);
+		WP_Mock::userFunction( '__', array( 'return_arg' => 0 ) );
+
+		$stream = $this->openTempStream();
+		$this->report->writeCsv( $stream, '2025-06-01', '2025-06-30' );
+		$content = $this->readStream( $stream );
+
+		$this->assertStringContainsString( 'T-INSIDE', $content );
+		$this->assertStringNotContainsString( 'T-BEFORE', $content );
+		$this->assertStringNotContainsString( 'T-AFTER', $content );
 	}
 
 	/** @test */
@@ -608,6 +701,105 @@ class ReportPageTest extends TestCase {
 			->expects( $this->once() )
 			->method( 'handle' )
 			->with( 42 );
+
+		$this->expectException( \RuntimeException::class );
+		$this->report->maybeAssignRetroactive();
+	}
+
+	/** @test */
+	public function maybe_assign_retroactive_respects_date_range(): void {
+		// Orders outside the requested range must be skipped.
+		$_GET = array(
+			'page'      => 'raffle-ticket-report',
+			'action'    => 'assign_retroactive',
+			'_wpnonce'  => 'valid',
+			'date_from' => '2025-06-01',
+			'date_to'   => '2025-06-30',
+		);
+
+		// Three orders: one before, one inside, one after the range.
+		$order_before = new WcOrderWithIdStub( 1, '2025-05-15' );
+		$order_inside = new WcOrderWithIdStub( 2, '2025-06-10' );
+		$order_after  = new WcOrderWithIdStub( 3, '2025-07-01' );
+
+		WP_Mock::userFunction( 'sanitize_text_field', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'wp_unslash', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'wp_verify_nonce', array( 'return' => true ) );
+		WP_Mock::userFunction( 'current_user_can', array( 'return' => true ) );
+		WP_Mock::userFunction(
+			'wc_get_orders',
+			array( 'return' => array( $order_before, $order_inside, $order_after ) )
+		);
+		WP_Mock::userFunction( 'admin_url', array( 'return' => 'http://example.com/wp-admin/admin.php' ) );
+		WP_Mock::userFunction( 'add_query_arg', array( 'return' => 'http://example.com/redirect' ) );
+		WP_Mock::userFunction(
+			'wp_safe_redirect',
+			array(
+				'times'  => 1,
+				'return' => static function () {
+					throw new \RuntimeException( 'wp_safe_redirect' );
+				},
+			)
+		);
+
+		// hasAssignedTicketsForOrder returns false for all orders.
+		$this->ticket_repo->method( 'hasAssignedTicketsForOrder' )->willReturn( false );
+
+		// handle() must be called only for the in-range order (id=2).
+		$this->order_handler
+			->expects( $this->once() )
+			->method( 'handle' )
+			->with( 2 );
+
+		$this->expectException( \RuntimeException::class );
+		$this->report->maybeAssignRetroactive();
+	}
+
+	/** @test */
+	public function maybe_assign_retroactive_overwrites_when_flag_is_set(): void {
+		$_GET = array(
+			'page'      => 'raffle-ticket-report',
+			'action'    => 'assign_retroactive',
+			'_wpnonce'  => 'valid',
+			'overwrite' => '1',
+		);
+
+		// Two orders that already have assigned tickets.
+		$order_a = new WcOrderWithIdStub( 10 );
+		$order_b = new WcOrderWithIdStub( 20 );
+
+		WP_Mock::userFunction( 'sanitize_text_field', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'wp_unslash', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'wp_verify_nonce', array( 'return' => true ) );
+		WP_Mock::userFunction( 'current_user_can', array( 'return' => true ) );
+		WP_Mock::userFunction( 'wc_get_orders', array( 'return' => array( $order_a, $order_b ) ) );
+		WP_Mock::userFunction( 'admin_url', array( 'return' => 'http://example.com/wp-admin/admin.php' ) );
+		WP_Mock::userFunction( 'add_query_arg', array( 'return' => 'http://example.com/redirect' ) );
+		WP_Mock::userFunction(
+			'wp_safe_redirect',
+			array(
+				'times'  => 1,
+				'return' => static function () {
+					throw new \RuntimeException( 'wp_safe_redirect' );
+				},
+			)
+		);
+
+		// deleteAllForOrder must be called once per order — this is what makes overwrite work.
+		$this->ticket_repo
+			->expects( $this->exactly( 2 ) )
+			->method( 'deleteAllForOrder' )
+			->withConsecutive( array( 10 ), array( 20 ) );
+
+		// hasAssignedTicketsForOrder must NOT be consulted in overwrite mode.
+		$this->ticket_repo
+			->expects( $this->never() )
+			->method( 'hasAssignedTicketsForOrder' );
+
+		// handle() is called for every order regardless of prior assignment state.
+		$this->order_handler
+			->expects( $this->exactly( 2 ) )
+			->method( 'handle' );
 
 		$this->expectException( \RuntimeException::class );
 		$this->report->maybeAssignRetroactive();

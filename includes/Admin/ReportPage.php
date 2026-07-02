@@ -111,7 +111,14 @@ class ReportPage {
 			wp_die( esc_html__( 'You do not have permission to download this report.', 'wp-woocommerce-raffle-ticket' ) );
 		}
 
-		$this->streamCsv();
+		$date_from = isset( $_GET['date_from'] ) // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			? sanitize_text_field( wp_unslash( $_GET['date_from'] ) ) // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			: '';
+		$date_to   = isset( $_GET['date_to'] ) // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			? sanitize_text_field( wp_unslash( $_GET['date_to'] ) ) // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			: '';
+
+		$this->streamCsv( $date_from, $date_to );
 		exit;
 	}
 
@@ -149,20 +156,65 @@ class ReportPage {
 			wp_die( esc_html__( 'You do not have permission to perform this action.', 'wp-woocommerce-raffle-ticket' ) );
 		}
 
-		$orders   = wc_get_orders(
+		// Optional order-date range and overwrite flag; sanitized after nonce verification.
+		$date_from = isset( $_GET['date_from'] ) // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			? sanitize_text_field( wp_unslash( $_GET['date_from'] ) ) // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			: '';
+		$date_to   = isset( $_GET['date_to'] ) // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			? sanitize_text_field( wp_unslash( $_GET['date_to'] ) ) // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			: '';
+		$overwrite = ! empty( $_GET['overwrite'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+		// Fetch all eligible orders oldest-first so ticket numbers are
+		// assigned in chronological order when multiple orders are processed.
+		$orders = wc_get_orders(
 			array(
-				'status' => array( 'processing', 'completed' ),
-				'limit'  => -1,
+				'status'  => array( 'processing', 'completed' ),
+				'limit'   => -1,
+				'orderby' => 'date',
+				'order'   => 'ASC',
 			)
 		);
+
+		// Filter to the requested date range when one is specified.
+		if ( '' !== $date_from || '' !== $date_to ) {
+			$orders = array_values(
+				array_filter(
+					$orders,
+					static function ( $order ) use ( $date_from, $date_to ) {
+						$order_date = $order->get_date_created();
+						if ( ! $order_date ) {
+							return true;
+						}
+						$order_date_str = $order_date->date( 'Y-m-d' );
+						if ( '' !== $date_from && $order_date_str < $date_from ) {
+							return false;
+						}
+						if ( '' !== $date_to && $order_date_str > $date_to ) {
+							return false;
+						}
+						return true;
+					}
+				)
+			);
+		}
+
 		$assigned = 0;
 
 		foreach ( $orders as $order ) {
 			$order_id = (int) $order->get_id();
-			if ( ! $this->ticket_repo->hasAssignedTicketsForOrder( $order_id ) ) {
-				$this->order_handler->handle( $order_id );
-				++$assigned;
+
+			if ( $overwrite ) {
+				// Overwrite mode: delete every ticket (assigned + pending) so that
+				// handle() re-assigns from the current rolls from scratch.
+				$this->ticket_repo->deleteAllForOrder( $order_id );
+			} elseif ( $this->ticket_repo->hasAssignedTicketsForOrder( $order_id ) ) {
+				// Normal mode: skip orders that already have assigned tickets.
+				continue;
 			}
+
+			$this->order_handler->handle( $order_id );
+			++$assigned;
 		}
 
 		wp_safe_redirect(
@@ -397,26 +449,87 @@ class ReportPage {
 	 * @return void
 	 */
 	public function renderReportTab(): void {
-		$download_url = wp_nonce_url(
-			admin_url( 'admin.php?page=' . self::PAGE_SLUG . '&action=download' ),
-			'raffle_ticket_report_download'
-		);
-
-		$assign_url = wp_nonce_url(
-			admin_url( 'admin.php?page=' . self::PAGE_SLUG . '&action=assign_retroactive' ),
-			'raffle_ticket_assign_retroactive'
-		);
 		?>
 		<div class="raffle-ticket-tab-content">
+			<h2><?php esc_html_e( 'Download CSV', 'wp-woocommerce-raffle-ticket' ); ?></h2>
 			<p>
-				<a href="<?php echo esc_url( $download_url ); ?>" class="button button-primary">
-					<?php esc_html_e( 'Download CSV', 'wp-woocommerce-raffle-ticket' ); ?>
-				</a>
-				&nbsp;
-				<a href="<?php echo esc_url( $assign_url ); ?>" class="button button-secondary">
-					<?php esc_html_e( 'Assign Missing Tickets', 'wp-woocommerce-raffle-ticket' ); ?>
-				</a>
+				<?php esc_html_e( 'Export all ticket assignments to a CSV file. Optionally restrict to an order-date range.', 'wp-woocommerce-raffle-ticket' ); ?>
 			</p>
+			<form method="get" action="<?php echo esc_url( admin_url( 'admin.php' ) ); ?>">
+				<input type="hidden" name="page" value="<?php echo esc_attr( self::PAGE_SLUG ); ?>" />
+				<input type="hidden" name="action" value="download" />
+				<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'raffle_ticket_report_download' ) ); ?>" />
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row">
+							<label for="csv_date_from">
+								<?php esc_html_e( 'Order Date From', 'wp-woocommerce-raffle-ticket' ); ?>
+							</label>
+						</th>
+						<td>
+							<input type="date" id="csv_date_from" name="date_from" />
+						</td>
+					</tr>
+					<tr>
+						<th scope="row">
+							<label for="csv_date_to">
+								<?php esc_html_e( 'Order Date To', 'wp-woocommerce-raffle-ticket' ); ?>
+							</label>
+						</th>
+						<td>
+							<input type="date" id="csv_date_to" name="date_to" />
+						</td>
+					</tr>
+				</table>
+				<?php submit_button( esc_html__( 'Download CSV', 'wp-woocommerce-raffle-ticket' ), 'primary' ); ?>
+			</form>
+
+			<h2><?php esc_html_e( 'Assign Missing Ticket Numbers', 'wp-woocommerce-raffle-ticket' ); ?></h2>
+			<p>
+				<?php esc_html_e( 'Assign ticket numbers to orders that are missing them. Optionally restrict to an order-date range. Orders are always processed oldest-first.', 'wp-woocommerce-raffle-ticket' ); ?>
+			</p>
+			<form method="get" action="<?php echo esc_url( admin_url( 'admin.php' ) ); ?>">
+				<input type="hidden" name="page" value="<?php echo esc_attr( self::PAGE_SLUG ); ?>" />
+				<input type="hidden" name="action" value="assign_retroactive" />
+				<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'raffle_ticket_assign_retroactive' ) ); ?>" />
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row">
+							<label for="date_from">
+								<?php esc_html_e( 'Order Date From', 'wp-woocommerce-raffle-ticket' ); ?>
+							</label>
+						</th>
+						<td>
+							<input type="date" id="date_from" name="date_from" />
+						</td>
+					</tr>
+					<tr>
+						<th scope="row">
+							<label for="date_to">
+								<?php esc_html_e( 'Order Date To', 'wp-woocommerce-raffle-ticket' ); ?>
+							</label>
+						</th>
+						<td>
+							<input type="date" id="date_to" name="date_to" />
+						</td>
+					</tr>
+					<tr>
+						<th scope="row">
+							<?php esc_html_e( 'Overwrite Existing', 'wp-woocommerce-raffle-ticket' ); ?>
+						</th>
+						<td>
+							<label>
+								<input type="checkbox" name="overwrite" value="1" />
+								<?php esc_html_e( 'Overwrite already-assigned ticket numbers', 'wp-woocommerce-raffle-ticket' ); ?>
+							</label>
+							<p class="description">
+								<?php esc_html_e( 'When checked, existing ticket assignments are deleted and re-assigned from the current rolls. Use this to correct a mis-entered roll.', 'wp-woocommerce-raffle-ticket' ); ?>
+							</p>
+						</td>
+					</tr>
+				</table>
+				<?php submit_button( esc_html__( 'Assign Missing Tickets', 'wp-woocommerce-raffle-ticket' ), 'secondary' ); ?>
+			</form>
 		</div>
 		<?php
 	}
@@ -685,15 +798,28 @@ class ReportPage {
 	 * Only called from maybeStreamCsv() during admin_init, before any page
 	 * output, so headers can be sent cleanly.
 	 *
+	 * @param string $date_from Optional start of order-date filter (Y-m-d).
+	 * @param string $date_to   Optional end   of order-date filter (Y-m-d).
+	 *
 	 * @return void
 	 */
-	public function streamCsv(): void {
-		$filename = 'raffle-tickets-' . gmdate( 'Y-m-d' ) . '.csv';
+	public function streamCsv( string $date_from = '', string $date_to = '' ): void {
+		if ( '' !== $date_from && '' !== $date_to ) {
+			$suffix = $date_from . '-to-' . $date_to;
+		} elseif ( '' !== $date_from ) {
+			$suffix = 'from-' . $date_from;
+		} elseif ( '' !== $date_to ) {
+			$suffix = 'to-' . $date_to;
+		} else {
+			$suffix = gmdate( 'Y-m-d' );
+		}
+
+		$filename = 'raffle-tickets-' . $suffix . '.csv';
 		$this->sendCsvHeaders( $filename );
 
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
 		$stream = fopen( 'php://output', 'w' );
-		$this->writeCsv( $stream );
+		$this->writeCsv( $stream, $date_from, $date_to );
 	}
 
 	/**
@@ -716,11 +842,13 @@ class ReportPage {
 	 * Accepts any writable stream (e.g. php://output in production, a temp
 	 * stream in tests) making the output straightforward to unit-test.
 	 *
-	 * @param resource $stream A writable stream resource.
+	 * @param resource $stream    A writable stream resource.
+	 * @param string   $date_from Optional start of order-date filter (Y-m-d). Empty = no lower bound.
+	 * @param string   $date_to   Optional end   of order-date filter (Y-m-d). Empty = no upper bound.
 	 *
 	 * @return void
 	 */
-	public function writeCsv( $stream ): void {
+	public function writeCsv( $stream, string $date_from = '', string $date_to = '' ): void {
 		// Header row.
 		fputcsv(
 			$stream,
@@ -743,6 +871,21 @@ class ReportPage {
 			$customer_name  = $order ? $order->get_formatted_billing_full_name() : '';
 			$customer_email = $order ? $order->get_billing_email() : '';
 
+			// Use the order's creation date, not the ticket assignment date.
+			$order_date_obj = $order ? $order->get_date_created() : null;
+			$order_date     = $order_date_obj ? $order_date_obj->date( 'Y-m-d H:i:s' ) : '';
+
+			// Skip rows outside the requested order-date range.
+			if ( '' !== $date_from || '' !== $date_to ) {
+				$order_date_short = $order_date_obj ? $order_date_obj->date( 'Y-m-d' ) : '';
+				if ( '' !== $date_from && $order_date_short < $date_from ) {
+					continue;
+				}
+				if ( '' !== $date_to && $order_date_short > $date_to ) {
+					continue;
+				}
+			}
+
 			// Show a human-readable label for pending (unassigned) tickets.
 			$ticket_number = null === $row->roll_id
 				? __( 'Pending', 'wp-woocommerce-raffle-ticket' )
@@ -760,7 +903,7 @@ class ReportPage {
 					$row->product_name ?? '',
 					$ticket_number,
 					$roll_label,
-					$row->created_at,
+					$order_date,
 				),
 				',',
 				'"',

@@ -178,6 +178,26 @@ class TicketRepositoryTest extends TestCase {
 		$this->assertNull( $where['roll_id'] );
 	}
 
+	// ── deleteAllForOrder() ───────────────────────────────────────────────────
+
+	/** @test */
+	public function delete_all_for_order_deletes_from_correct_table(): void {
+		$this->repo->deleteAllForOrder( 55 );
+
+		$this->assertCount( 1, $this->wpdb_spy->deletes );
+		$this->assertSame( 'wp_raffle_tickets', $this->wpdb_spy->deletes[0]['table'] );
+	}
+
+	/** @test */
+	public function delete_all_for_order_filters_by_order_id_only(): void {
+		$this->repo->deleteAllForOrder( 77 );
+
+		$where = $this->wpdb_spy->deletes[0]['where'];
+		// Only order_id in the WHERE — no roll_id filter so both assigned and pending are removed.
+		$this->assertSame( 77, $where['order_id'] );
+		$this->assertArrayNotHasKey( 'roll_id', $where );
+	}
+
 	// ── findByOrder() ─────────────────────────────────────────────────────────
 
 	/** @test */
