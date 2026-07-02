@@ -49,12 +49,21 @@ register_activation_hook(
 );
 
 // Bootstrap after all plugins are loaded so WooCommerce is available.
+// Also run a schema upgrade check so that updates deployed to an already-active
+// plugin (which skip the activation hook) still migrate the database.
 add_action(
 	'plugins_loaded',
 	function (): void {
 		if ( ! class_exists( 'WooCommerce' ) ) {
 			return;
 		}
+
+		$installer = new WpWoocommerceRaffleTicket\Database\Installer();
+
+		if ( get_option( WpWoocommerceRaffleTicket\Database\Installer::DB_VERSION_OPTION ) !== WpWoocommerceRaffleTicket\Database\Installer::DB_VERSION ) {
+			$installer->install();
+		}
+
 		( new WpWoocommerceRaffleTicket\Plugin() )->register();
 	}
 );

@@ -11,33 +11,38 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-use WpWoocommerceRaffleTicket\Product\ProductSettings;
-
 /**
  * Class TicketNumberGenerator
  *
- * Combines a product's raffle settings with a reserved sequence number to
- * produce a formatted TicketNumber value object.
+ * Combines a ticket prefix, a physical roll, and a 1-based offset within that
+ * roll to produce a formatted TicketNumber value object.
  *
- * Format: {prefix}{zero-padded sequence}
- * The padding width equals the number of digits in max_sequence.
- * Example: prefix="RAFFLE-", max=9999, sequence=42 → "RAFFLE-0042"
+ * Format: {prefix}{zero-padded physical number}
+ * Padding width = number of digits in the roll's last printed number.
+ *
+ * Example: prefix="RAFFLE-", roll start=1001 count=500, offset=1
+ *   → physical number = 1001
+ *   → last number     = 1500 (4 digits)
+ *   → formatted       = "RAFFLE-1001"
  */
 class TicketNumberGenerator {
 
 	/**
-	 * Generate a TicketNumber for the given settings and reserved sequence.
+	 * Generate a TicketNumber for the given roll and 1-based offset.
 	 *
-	 * @param ProductSettings $settings The product's raffle configuration.
-	 * @param int             $sequence The reserved sequence number.
+	 * @param string     $prefix The product's configured ticket prefix.
+	 * @param TicketRoll $roll   The physical roll being consumed.
+	 * @param int        $offset 1-based position within the roll (1 = first ticket).
 	 *
 	 * @return TicketNumber
 	 */
-	public function generate( ProductSettings $settings, int $sequence ): TicketNumber {
-		$pad_length = strlen( (string) $settings->getMaxSequence() );
-		$padded     = str_pad( (string) $sequence, $pad_length, '0', STR_PAD_LEFT );
-		$formatted  = $settings->getPrefix() . $padded;
+	public function generate( string $prefix, TicketRoll $roll, int $offset ): TicketNumber {
+		$physical_number = $roll->getStartNumber() + ( $offset - 1 );
+		$last_number     = $roll->getLastNumber();
+		$pad_length      = strlen( (string) $last_number );
+		$padded          = str_pad( (string) $physical_number, $pad_length, '0', STR_PAD_LEFT );
+		$formatted       = $prefix . $padded;
 
-		return new TicketNumber( $settings->getPrefix(), $sequence, $formatted );
+		return new TicketNumber( $prefix, $physical_number, $formatted );
 	}
 }

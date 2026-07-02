@@ -16,7 +16,7 @@ use WpWoocommerceRaffleTicket\Admin\ReportPage;
 use WpWoocommerceRaffleTicket\Order\OrderDisplay;
 use WpWoocommerceRaffleTicket\Order\OrderHandler;
 use WpWoocommerceRaffleTicket\Product\ProductMetaBox;
-use WpWoocommerceRaffleTicket\Ticket\SequenceRepository;
+use WpWoocommerceRaffleTicket\Ticket\RollRepository;
 use WpWoocommerceRaffleTicket\Ticket\TicketNumberGenerator;
 use WpWoocommerceRaffleTicket\Ticket\TicketRepository;
 
@@ -34,13 +34,13 @@ class Plugin {
 	 */
 	public function register(): void {
 		$ticket_repo     = new TicketRepository();
-		$seq_repo        = new SequenceRepository();
+		$roll_repo       = new RollRepository();
 		$generator       = new TicketNumberGenerator();
 		$label           = PluginSettings::getLabel();
-		$order_handler   = new OrderHandler( $ticket_repo, $seq_repo, $generator );
+		$order_handler   = new OrderHandler( $ticket_repo, $roll_repo, $generator );
 		$order_display   = new OrderDisplay( $ticket_repo, $label );
 		$meta_box        = new ProductMetaBox( $label );
-		$report_page     = new ReportPage( $ticket_repo, $order_handler, $label );
+		$report_page     = new ReportPage( $ticket_repo, $order_handler, $label, $roll_repo );
 		$plugin_settings = new PluginSettings();
 
 		// Assign tickets when payment is received.
@@ -48,9 +48,6 @@ class Plugin {
 		// 'completed'  covers credit-card gateways (Stripe, Square, etc.) that skip processing.
 		add_action( 'woocommerce_order_status_processing', array( $order_handler, 'handle' ), 10, 1 );
 		add_action( 'woocommerce_order_status_completed', array( $order_handler, 'handle' ), 10, 1 );
-
-		// Block add-to-cart when the raffle is sold out.
-		add_filter( 'woocommerce_add_to_cart_validation', array( $order_handler, 'validateCartAdd' ), 10, 3 );
 
 		// Product edit page — raffle settings meta box.
 		add_action( 'add_meta_boxes', array( $meta_box, 'register' ) );
@@ -63,12 +60,14 @@ class Plugin {
 		// Register the ticket-label option with the WordPress Settings API.
 		$plugin_settings->register();
 
-		// Admin report / CSV export + retroactive ticket assignment.
+		// Admin page: Report tab (CSV export + retroactive assignment),
+		// Rolls tab (roll add / delete), and Settings tab (ticket label).
 		add_action( 'admin_menu', array( $report_page, 'register' ) );
-
-		// Stream CSV or run retroactive assignment during admin_init — before WordPress
-		// outputs any HTML — so that headers / redirects are sent cleanly.
 		add_action( 'admin_init', array( $report_page, 'maybeStreamCsv' ) );
 		add_action( 'admin_init', array( $report_page, 'maybeAssignRetroactive' ) );
+		add_action( 'admin_init', array( $report_page, 'maybeDeleteRoll' ) );
+
+		// Roll add form posts to admin-post.php with action=wrt_add_roll.
+		add_action( 'admin_post_wrt_add_roll', array( $report_page, 'handleAddRoll' ) );
 	}
 }

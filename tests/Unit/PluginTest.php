@@ -34,12 +34,12 @@ class PluginTest extends TestCase {
 	}
 
 	/** @test */
-	public function register_hooks_cart_add_to_cart_validation_filter(): void {
-		WP_Mock::expectFilterAdded(
-			'woocommerce_add_to_cart_validation',
-			array( new AnyInstance( OrderHandler::class ), 'validateCartAdd' ),
+	public function register_hooks_woocommerce_order_status_completed(): void {
+		WP_Mock::expectActionAdded(
+			'woocommerce_order_status_completed',
+			array( new AnyInstance( OrderHandler::class ), 'handle' ),
 			10,
-			3
+			1
 		);
 
 		( new Plugin() )->register();
@@ -96,24 +96,10 @@ class PluginTest extends TestCase {
 	}
 
 	/** @test */
-	public function register_hooks_admin_menu(): void {
+	public function register_hooks_report_page_to_admin_menu(): void {
 		WP_Mock::expectActionAdded(
 			'admin_menu',
 			array( new AnyInstance( ReportPage::class ), 'register' )
-		);
-
-		( new Plugin() )->register();
-
-		$this->addToAssertionCount( 1 );
-	}
-
-	/** @test */
-	public function register_hooks_woocommerce_order_status_completed(): void {
-		WP_Mock::expectActionAdded(
-			'woocommerce_order_status_completed',
-			array( new AnyInstance( OrderHandler::class ), 'handle' ),
-			10,
-			1
 		);
 
 		( new Plugin() )->register();
@@ -138,6 +124,30 @@ class PluginTest extends TestCase {
 		WP_Mock::expectActionAdded(
 			'admin_init',
 			array( new AnyInstance( ReportPage::class ), 'maybeAssignRetroactive' )
+		);
+
+		( new Plugin() )->register();
+
+		$this->addToAssertionCount( 1 );
+	}
+
+	/** @test */
+	public function register_hooks_admin_post_for_add_roll(): void {
+		WP_Mock::expectActionAdded(
+			'admin_post_wrt_add_roll',
+			array( new AnyInstance( ReportPage::class ), 'handleAddRoll' )
+		);
+
+		( new Plugin() )->register();
+
+		$this->addToAssertionCount( 1 );
+	}
+
+	/** @test */
+	public function register_hooks_admin_init_for_delete_roll(): void {
+		WP_Mock::expectActionAdded(
+			'admin_init',
+			array( new AnyInstance( ReportPage::class ), 'maybeDeleteRoll' )
 		);
 
 		( new Plugin() )->register();

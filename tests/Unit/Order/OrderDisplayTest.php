@@ -90,11 +90,18 @@ class OrderDisplayTest extends TestCase {
 	public function render_admin_outputs_ticket_numbers(): void {
 		$order   = new WcOrderDisplayStub( 1 );
 		$tickets = array(
-			(object) array( 'ticket_number' => 'RAFFLE-0001' ),
+			(object) array(
+				'ticket_number' => 'RAFFLE-0001',
+				'roll_id'       => 1,
+				'roll_label'    => 'Roll A',
+				'roll_start'    => '1001',
+				'roll_last'     => '1500',
+			),
 		);
 		$this->ticket_repo->method( 'findByOrder' )->willReturn( $tickets );
 
 		WP_Mock::userFunction( 'esc_html', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( '__', array( 'return_arg' => 0 ) );
 
 		ob_start();
 		$this->display->renderAdmin( $order );
@@ -102,5 +109,82 @@ class OrderDisplayTest extends TestCase {
 
 		$this->assertStringContainsString( 'RAFFLE-0001', $output );
 		$this->assertStringContainsString( 'raffle-tickets-admin', $output );
+	}
+
+	/** @test */
+	public function render_admin_shows_roll_label_when_present(): void {
+		$order   = new WcOrderDisplayStub( 1 );
+		$tickets = array(
+			(object) array(
+				'ticket_number' => 'RAFFLE-1042',
+				'roll_id'       => 3,
+				'roll_label'    => 'Roll B',
+				'roll_start'    => '1001',
+				'roll_last'     => '1500',
+			),
+		);
+		$this->ticket_repo->method( 'findByOrder' )->willReturn( $tickets );
+
+		WP_Mock::userFunction( 'esc_html', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( '__', array( 'return_arg' => 0 ) );
+
+		ob_start();
+		$this->display->renderAdmin( $order );
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'Roll B', $output );
+		$this->assertStringContainsString( '1001', $output );
+		$this->assertStringContainsString( '1500', $output );
+		$this->assertStringContainsString( 'raffle-roll-label', $output );
+	}
+
+	/** @test */
+	public function render_admin_uses_roll_id_when_label_is_empty(): void {
+		$order   = new WcOrderDisplayStub( 1 );
+		$tickets = array(
+			(object) array(
+				'ticket_number' => 'RAFFLE-1001',
+				'roll_id'       => 7,
+				'roll_label'    => '',
+				'roll_start'    => '1001',
+				'roll_last'     => '1500',
+			),
+		);
+		$this->ticket_repo->method( 'findByOrder' )->willReturn( $tickets );
+
+		WP_Mock::userFunction( 'esc_html', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( '__', array( 'return_arg' => 0 ) );
+
+		ob_start();
+		$this->display->renderAdmin( $order );
+		$output = ob_get_clean();
+
+		// Falls back to "Roll #7".
+		$this->assertStringContainsString( '7', $output );
+		$this->assertStringContainsString( 'raffle-roll-label', $output );
+	}
+
+	/** @test */
+	public function render_admin_omits_roll_label_when_roll_id_is_null(): void {
+		$order   = new WcOrderDisplayStub( 1 );
+		$tickets = array(
+			(object) array(
+				'ticket_number' => 'RAFFLE-0001',
+				'roll_id'       => null,
+				'roll_label'    => null,
+				'roll_start'    => null,
+				'roll_last'     => null,
+			),
+		);
+		$this->ticket_repo->method( 'findByOrder' )->willReturn( $tickets );
+
+		WP_Mock::userFunction( 'esc_html', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( '__', array( 'return_arg' => 0 ) );
+
+		ob_start();
+		$this->display->renderAdmin( $order );
+		$output = ob_get_clean();
+
+		$this->assertStringNotContainsString( 'raffle-roll-label', $output );
 	}
 }

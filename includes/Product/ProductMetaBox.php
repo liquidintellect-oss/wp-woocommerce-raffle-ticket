@@ -16,7 +16,10 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * Adds a "{label} Settings" meta box to the WooCommerce product editor,
  * allowing store admins to enable ticket assignment and configure the prefix
- * and sequence range on a per-product basis.
+ * on a per-product basis.
+ *
+ * Physical ticket rolls (which define the number ranges) are managed separately
+ * via the Ticket Rolls admin page.
  */
 class ProductMetaBox {
 
@@ -93,32 +96,13 @@ class ProductMetaBox {
 				<?php esc_html_e( 'Text prepended to every ticket number (e.g. "RAFFLE2024-").', 'wp-woocommerce-raffle-ticket' ); ?>
 			</span>
 		</p>
-		<p>
-			<label for="raffle_ticket_min_sequence">
-				<?php esc_html_e( 'Min Sequence', 'wp-woocommerce-raffle-ticket' ); ?>
-			</label><br />
-			<input
-				type="number"
-				id="raffle_ticket_min_sequence"
-				name="raffle_ticket_min_sequence"
-				value="<?php echo esc_attr( (string) $settings->getMinSequence() ); ?>"
-				min="1"
-			/>
-		</p>
-		<p>
-			<label for="raffle_ticket_max_sequence">
-				<?php esc_html_e( 'Max Sequence', 'wp-woocommerce-raffle-ticket' ); ?>
-			</label><br />
-			<input
-				type="number"
-				id="raffle_ticket_max_sequence"
-				name="raffle_ticket_max_sequence"
-				value="<?php echo esc_attr( (string) $settings->getMaxSequence() ); ?>"
-				min="1"
-			/>
-			<span class="description">
-				<?php esc_html_e( 'The raffle is considered sold out once this number is reached.', 'wp-woocommerce-raffle-ticket' ); ?>
-			</span>
+		<p class="description">
+			<?php
+			esc_html_e(
+				'Ticket number ranges are defined by the physical rolls assigned to this product. Manage rolls under WooCommerce → Ticket Rolls.',
+				'wp-woocommerce-raffle-ticket'
+			);
+			?>
 		</p>
 		<?php
 	}
@@ -157,17 +141,5 @@ class ProductMetaBox {
 			? sanitize_text_field( wp_unslash( $_POST['raffle_ticket_prefix'] ) )
 			: '';
 		update_post_meta( $post_id, ProductSettings::META_PREFIX, $prefix );
-
-		// Min sequence.
-		$min = isset( $_POST['raffle_ticket_min_sequence'] )
-			? absint( wp_unslash( $_POST['raffle_ticket_min_sequence'] ) ) // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-			: 1;
-		update_post_meta( $post_id, ProductSettings::META_MIN_SEQUENCE, $min );
-
-		// Max sequence.
-		$max = isset( $_POST['raffle_ticket_max_sequence'] )
-			? absint( wp_unslash( $_POST['raffle_ticket_max_sequence'] ) ) // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-			: 9999;
-		update_post_meta( $post_id, ProductSettings::META_MAX_SEQUENCE, $max );
 	}
 }

@@ -1,9 +1,9 @@
 <?php
 
 use PHPUnit\Framework\TestCase;
-use WpWoocommerceRaffleTicket\Product\ProductSettings;
 use WpWoocommerceRaffleTicket\Ticket\TicketNumber;
 use WpWoocommerceRaffleTicket\Ticket\TicketNumberGenerator;
+use WpWoocommerceRaffleTicket\Ticket\TicketRoll;
 
 class TicketNumberGeneratorTest extends TestCase {
 
@@ -18,73 +18,95 @@ class TicketNumberGeneratorTest extends TestCase {
 		WP_Mock::tearDown();
 	}
 
-	private function makeSettings(
-		string $prefix,
-		int $min,
-		int $max,
-		bool $enabled = true
-	): ProductSettings {
-		return new ProductSettings( $enabled, $prefix, $min, $max );
+	private function makeRoll( int $start, int $count ): TicketRoll {
+		return new TicketRoll( 1, 10, 'Roll A', $start, $count, 0, 0 );
 	}
 
 	/** @test */
 	public function it_returns_a_ticket_number_instance(): void {
-		$settings = $this->makeSettings( 'RAFFLE-', 1, 9999 );
-		$ticket   = $this->generator->generate( $settings, 1 );
+		$roll   = $this->makeRoll( 1, 9999 );
+		$ticket = $this->generator->generate( 'RAFFLE-', $roll, 1 );
 
 		$this->assertInstanceOf( TicketNumber::class, $ticket );
 	}
 
 	/** @test */
-	public function it_pads_sequence_to_width_of_max(): void {
-		// max=9999 → 4-digit padding → sequence 42 → "0042"
-		$settings = $this->makeSettings( 'R-', 1, 9999 );
-		$ticket   = $this->generator->generate( $settings, 42 );
+	public function it_formats_with_padding_based_on_last_number(): void {
+		// start=1, count=9999 → last=9999 (4 digits), offset=1 → physical=1 → "R-0001".
+		$roll   = $this->makeRoll( 1, 9999 );
+		$ticket = $this->generator->generate( 'R-', $roll, 1 );
 
-		$this->assertSame( 'R-0042', $ticket->getFormatted() );
+		$this->assertSame( 'R-0001', $ticket->getFormatted() );
 	}
 
 	/** @test */
-	public function it_uses_correct_padding_for_three_digit_max(): void {
-		// max=100 → 3-digit padding → sequence 5 → "005"
-		$settings = $this->makeSettings( 'T-', 1, 100 );
-		$ticket   = $this->generator->generate( $settings, 5 );
+	public function it_computes_physical_number_as_start_plus_offset_minus_one(): void {
+		// start=1001, count=500, offset=1 → physical=1001; last=1500 (4 digits).
+		$roll   = $this->makeRoll( 1001, 500 );
+		$ticket = $this->generator->generate( 'RAFFLE-', $roll, 1 );
+
+		$this->assertSame( 'RAFFLE-1001', $ticket->getFormatted() );
+	}
+
+	/** @test */
+	public function it_advances_physical_number_with_offset(): void {
+		// start=1001, count=500, offset=42 → physical=1042.
+		$roll   = $this->makeRoll( 1001, 500 );
+		$ticket = $this->generator->generate( 'R-', $roll, 42 );
+
+		$this->assertSame( 'R-1042', $ticket->getFormatted() );
+	}
+
+	/** @test */
+	public function it_produces_last_ticket_at_offset_equal_to_count(): void {
+		// start=1001, count=500, offset=500 → physical=1500.
+		$roll   = $this->makeRoll( 1001, 500 );
+		$ticket = $this->generator->generate( 'R-', $roll, 500 );
+
+		$this->assertSame( 'R-1500', $ticket->getFormatted() );
+	}
+
+	/** @test */
+	public function it_uses_correct_padding_for_three_digit_last_number(): void {
+		// start=1, count=100 → last=100 (3 digits), offset=5 → physical=5 → "T-005".
+		$roll   = $this->makeRoll( 1, 100 );
+		$ticket = $this->generator->generate( 'T-', $roll, 5 );
 
 		$this->assertSame( 'T-005', $ticket->getFormatted() );
 	}
 
 	/** @test */
-	public function it_does_not_truncate_sequence_exceeding_padding_width(): void {
-		// max=9 → 1-digit padding; sequence 42 still renders as "42" (no truncation).
-		$settings = $this->makeSettings( 'X-', 1, 9 );
-		$ticket   = $this->generator->generate( $settings, 42 );
+	public function it_does_not_truncate_physical_number_exceeding_pad_width(): void {
+		// start=1, count=9 → last=9 (1 digit), offset=10 → physical=10 (2 digits).
+		$roll   = $this->makeRoll( 1, 9 );
+		$ticket = $this->generator->generate( 'X-', $roll, 10 );
 
-		$this->assertSame( 'X-42', $ticket->getFormatted() );
+		$this->assertSame( 'X-10', $ticket->getFormatted() );
 	}
 
 	/** @test */
 	public function it_handles_empty_prefix(): void {
-		$settings = $this->makeSettings( '', 1, 999 );
-		$ticket   = $this->generator->generate( $settings, 7 );
+		// start=1, count=999 → last=999 (3 digits), offset=7 → "007".
+		$roll   = $this->makeRoll( 1, 999 );
+		$ticket = $this->generator->generate( '', $roll, 7 );
 
 		$this->assertSame( '007', $ticket->getFormatted() );
 	}
 
 	/** @test */
-	public function it_stores_correct_prefix_and_sequence_on_value_object(): void {
-		$settings = $this->makeSettings( 'DRAW-', 1, 9999 );
-		$ticket   = $this->generator->generate( $settings, 1 );
+	public function it_stores_physical_number_as_sequence(): void {
+		// start=2000, count=100, offset=1 → physical=2000.
+		$roll   = $this->makeRoll( 2000, 100 );
+		$ticket = $this->generator->generate( 'DRAW-', $roll, 1 );
 
-		$this->assertSame( 'DRAW-', $ticket->getPrefix() );
-		$this->assertSame( 1, $ticket->getSequence() );
+		$this->assertSame( 2000, $ticket->getSequence() );
 	}
 
 	/** @test */
-	public function it_generates_min_sequence_correctly(): void {
-		// min=100, max=999 → 3-digit padding; first ticket = "100"
-		$settings = $this->makeSettings( 'F-', 100, 999 );
-		$ticket   = $this->generator->generate( $settings, 100 );
+	public function it_stores_prefix_on_value_object(): void {
+		$roll   = $this->makeRoll( 1, 100 );
+		$ticket = $this->generator->generate( 'DRAW-', $roll, 1 );
 
-		$this->assertSame( 'F-100', $ticket->getFormatted() );
+		$this->assertSame( 'DRAW-', $ticket->getPrefix() );
 	}
 }
