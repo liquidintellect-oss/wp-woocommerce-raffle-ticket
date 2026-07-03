@@ -227,6 +227,7 @@ class RollRepositoryTest extends TestCase {
 			'ticket_count'   => 500,
 			'current_offset' => 0,
 			'sort_order'     => 0,
+			'direction'      => 'asc',
 		);
 		$this->wpdb_spy->setGetResultsReturn( array( $row ) );
 
@@ -235,6 +236,48 @@ class RollRepositoryTest extends TestCase {
 		$this->assertCount( 1, $result );
 		$this->assertInstanceOf( TicketRoll::class, $result[0] );
 		$this->assertSame( 1001, $result[0]->getStartNumber() );
+		$this->assertSame( 'asc', $result[0]->getDirection() );
+	}
+
+	/** @test */
+	public function find_by_product_maps_descending_direction(): void {
+		$row = (object) array(
+			'id'             => 2,
+			'product_id'     => 10,
+			'label'          => 'Roll B',
+			'start_number'   => 1000,
+			'ticket_count'   => 500,
+			'current_offset' => 0,
+			'sort_order'     => 1,
+			'direction'      => 'desc',
+		);
+		$this->wpdb_spy->setGetResultsReturn( array( $row ) );
+
+		$result = $this->repo->findByProduct( 10 );
+
+		$this->assertCount( 1, $result );
+		$this->assertSame( 'desc', $result[0]->getDirection() );
+		$this->assertTrue( $result[0]->isDescending() );
+	}
+
+	/** @test */
+	public function find_by_product_defaults_direction_to_asc_when_column_absent(): void {
+		// Legacy rows without a direction column should default to 'asc'.
+		$row = (object) array(
+			'id'             => 3,
+			'product_id'     => 10,
+			'label'          => 'Roll C',
+			'start_number'   => 1,
+			'ticket_count'   => 100,
+			'current_offset' => 0,
+			'sort_order'     => 0,
+			// direction intentionally omitted.
+		);
+		$this->wpdb_spy->setGetResultsReturn( array( $row ) );
+
+		$result = $this->repo->findByProduct( 10 );
+
+		$this->assertSame( 'asc', $result[0]->getDirection() );
 	}
 
 	// ── create() ─────────────────────────────────────────────────────────────
@@ -263,6 +306,27 @@ class RollRepositoryTest extends TestCase {
 		$this->assertSame( 250, $data['ticket_count'] );
 		$this->assertSame( 0, $data['current_offset'] );
 		$this->assertSame( 1, $data['sort_order'] );
+		$this->assertSame( 'asc', $data['direction'] );
+	}
+
+	/** @test */
+	public function create_stores_descending_direction(): void {
+		WP_Mock::userFunction( 'current_time', array( 'return' => '2025-06-01 12:00:00' ) );
+
+		$this->repo->create( 10, 'Roll D', 1000, 500, 0, 'desc' );
+
+		$data = $this->wpdb_spy->inserts[0]['data'];
+		$this->assertSame( 'desc', $data['direction'] );
+	}
+
+	/** @test */
+	public function create_sanitises_invalid_direction_to_asc(): void {
+		WP_Mock::userFunction( 'current_time', array( 'return' => '2025-06-01 12:00:00' ) );
+
+		$this->repo->create( 10, 'Roll E', 1, 100, 0, 'invalid' );
+
+		$data = $this->wpdb_spy->inserts[0]['data'];
+		$this->assertSame( 'asc', $data['direction'] );
 	}
 
 	// ── delete() ─────────────────────────────────────────────────────────────

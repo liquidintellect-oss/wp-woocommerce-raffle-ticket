@@ -18,8 +18,8 @@ class TicketNumberGeneratorTest extends TestCase {
 		WP_Mock::tearDown();
 	}
 
-	private function makeRoll( int $start, int $count ): TicketRoll {
-		return new TicketRoll( 1, 10, 'Roll A', $start, $count, 0, 0 );
+	private function makeRoll( int $start, int $count, string $direction = 'asc' ): TicketRoll {
+		return new TicketRoll( 1, 10, 'Roll A', $start, $count, 0, 0, $direction );
 	}
 
 	/** @test */
@@ -108,5 +108,45 @@ class TicketNumberGeneratorTest extends TestCase {
 		$ticket = $this->generator->generate( 'DRAW-', $roll, 1 );
 
 		$this->assertSame( 'DRAW-', $ticket->getPrefix() );
+	}
+
+	// ── Descending rolls ──────────────────────────────────────────────────────
+
+	/** @test */
+	public function descending_first_offset_returns_start_number(): void {
+		// start=1000, count=500, offset=1 → physical=1000; last=501 (4 digits each).
+		$roll   = $this->makeRoll( 1000, 500, 'desc' );
+		$ticket = $this->generator->generate( 'R-', $roll, 1 );
+
+		$this->assertSame( 'R-1000', $ticket->getFormatted() );
+		$this->assertSame( 1000, $ticket->getSequence() );
+	}
+
+	/** @test */
+	public function descending_advances_downward_with_offset(): void {
+		// start=1000, count=500, offset=10 → physical=991.
+		$roll   = $this->makeRoll( 1000, 500, 'desc' );
+		$ticket = $this->generator->generate( 'R-', $roll, 10 );
+
+		$this->assertSame( 'R-0991', $ticket->getFormatted() );
+	}
+
+	/** @test */
+	public function descending_last_ticket_at_offset_equal_to_count(): void {
+		// start=1000, count=500, offset=500 → physical=501.
+		$roll   = $this->makeRoll( 1000, 500, 'desc' );
+		$ticket = $this->generator->generate( 'R-', $roll, 500 );
+
+		$this->assertSame( 'R-0501', $ticket->getFormatted() );
+	}
+
+	/** @test */
+	public function descending_pads_based_on_start_number_digits(): void {
+		// start=100, count=100, offset=1 → physical=100; last=1 → pad=3.
+		$roll   = $this->makeRoll( 100, 100, 'desc' );
+		$ticket = $this->generator->generate( 'T-', $roll, 100 );
+
+		// last ticket is 1, padded to 3 digits (width of start=100).
+		$this->assertSame( 'T-001', $ticket->getFormatted() );
 	}
 }

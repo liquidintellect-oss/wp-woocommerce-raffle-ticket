@@ -874,9 +874,11 @@ class ReportPageTest extends TestCase {
 			'roll_start_number' => '1001',
 			'roll_ticket_count' => '500',
 			'roll_sort_order'   => '0',
+			'roll_direction'    => 'asc',
 		);
 
 		WP_Mock::userFunction( 'sanitize_text_field', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'sanitize_key', array( 'return_arg' => 0 ) );
 		WP_Mock::userFunction( 'wp_unslash', array( 'return_arg' => 0 ) );
 		WP_Mock::userFunction( 'wp_verify_nonce', array( 'return' => true ) );
 		WP_Mock::userFunction( 'current_user_can', array( 'return' => true ) );
@@ -906,6 +908,55 @@ class ReportPageTest extends TestCase {
 	}
 
 	/** @test */
+	public function handle_add_roll_passes_descending_direction_to_create(): void {
+		$_POST = array(
+			'_wpnonce'          => 'valid',
+			'roll_product_id'   => '10',
+			'roll_label'        => 'Roll B',
+			'roll_start_number' => '1000',
+			'roll_ticket_count' => '500',
+			'roll_sort_order'   => '0',
+			'roll_direction'    => 'desc',
+		);
+
+		WP_Mock::userFunction( 'sanitize_text_field', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'sanitize_key', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'wp_unslash', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'wp_verify_nonce', array( 'return' => true ) );
+		WP_Mock::userFunction( 'current_user_can', array( 'return' => true ) );
+		WP_Mock::userFunction( 'absint', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'admin_url', array( 'return' => 'http://example.com/wp-admin/admin.php' ) );
+		WP_Mock::userFunction(
+			'add_query_arg',
+			array( 'return' => 'http://example.com/wp-admin/admin.php?page=raffle-ticket-report&tab=rolls' )
+		);
+		WP_Mock::userFunction(
+			'wp_safe_redirect',
+			array(
+				'times'  => 1,
+				'return' => static function () {
+					throw new \RuntimeException( 'wp_safe_redirect' );
+				},
+			)
+		);
+
+		$this->roll_repo
+			->expects( $this->once() )
+			->method( 'create' )
+			->with(
+				$this->anything(),
+				$this->anything(),
+				$this->anything(),
+				$this->anything(),
+				$this->anything(),
+				'desc'
+			);
+
+		$this->expectException( \RuntimeException::class );
+		$this->report->handleAddRoll();
+	}
+
+	/** @test */
 	public function handle_add_roll_skips_create_when_product_id_is_zero(): void {
 		$_POST = array(
 			'_wpnonce'          => 'valid',
@@ -914,6 +965,7 @@ class ReportPageTest extends TestCase {
 		);
 
 		WP_Mock::userFunction( 'sanitize_text_field', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'sanitize_key', array( 'return_arg' => 0 ) );
 		WP_Mock::userFunction( 'wp_unslash', array( 'return_arg' => 0 ) );
 		WP_Mock::userFunction( 'wp_verify_nonce', array( 'return' => true ) );
 		WP_Mock::userFunction( 'current_user_can', array( 'return' => true ) );
@@ -1043,6 +1095,7 @@ class ReportPageTest extends TestCase {
 			'id'             => 1,
 			'product_name'   => 'Lucky Draw',
 			'label'          => 'Roll A',
+			'direction'      => 'asc',
 			'start_number'   => 1001,
 			'ticket_count'   => 500,
 			'current_offset' => 10,
@@ -1070,5 +1123,37 @@ class ReportPageTest extends TestCase {
 		$this->assertStringContainsString( '1500', $output );
 		// Remaining: 500 - 10 = 490.
 		$this->assertStringContainsString( '490', $output );
+	}
+
+	/** @test */
+	public function render_rolls_table_shows_descending_direction_and_correct_last_number(): void {
+		$row = (object) array(
+			'id'             => 2,
+			'product_name'   => 'Grand Raffle',
+			'label'          => 'Roll B',
+			'direction'      => 'desc',
+			'start_number'   => 1000,
+			'ticket_count'   => 500,
+			'current_offset' => 0,
+			'sort_order'     => 0,
+		);
+
+		WP_Mock::userFunction( '__', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'esc_html__', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'esc_html', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'esc_url', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'esc_js', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'wp_nonce_url', array( 'return_arg' => 0 ) );
+		WP_Mock::userFunction( 'add_query_arg', array( 'return' => 'http://example.com/delete' ) );
+		WP_Mock::userFunction( 'admin_url', array( 'return' => 'http://example.com/wp-admin/admin.php' ) );
+
+		ob_start();
+		$this->report->renderRollsTable( array( $row ) );
+		$output = ob_get_clean();
+
+		// Last number for descending: 1000 - 500 + 1 = 501.
+		$this->assertStringContainsString( '501', $output );
+		// Direction label.
+		$this->assertStringContainsString( 'Descending', $output );
 	}
 }
