@@ -121,6 +121,7 @@ class RollRepositoryTest extends TestCase {
 			'start_number'   => 1001,
 			'ticket_count'   => 500,
 			'current_offset' => 0,
+			'direction'      => 'asc',
 		);
 		$this->wpdb_spy->setGetRowReturn( $roll );
 		$this->wpdb_spy->setQueryReturn( 1 );   // UPDATE affected one row.
@@ -133,6 +134,25 @@ class RollRepositoryTest extends TestCase {
 		$this->assertSame( 1001, $result['start_number'] );
 		$this->assertSame( 500, $result['ticket_count'] );
 		$this->assertSame( 7, $result['offset'] );
+		$this->assertSame( 'asc', $result['direction'] );
+	}
+
+	/** @test */
+	public function next_ticket_returns_desc_direction_for_descending_roll(): void {
+		$roll = (object) array(
+			'id'             => 4,
+			'start_number'   => 1000,
+			'ticket_count'   => 500,
+			'current_offset' => 0,
+			'direction'      => 'desc',
+		);
+		$this->wpdb_spy->setGetRowReturn( $roll );
+		$this->wpdb_spy->setQueryReturn( 1 );
+		$this->wpdb_spy->setGetVarReturn( '1' );
+
+		$result = $this->repo->nextTicket( 10 );
+
+		$this->assertSame( 'desc', $result['direction'] );
 	}
 
 	/** @test */

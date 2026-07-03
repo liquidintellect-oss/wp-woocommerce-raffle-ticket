@@ -50,7 +50,7 @@ class RollRepository {
 			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$roll = $wpdb->get_row(
 				$wpdb->prepare(
-					"SELECT id, start_number, ticket_count, current_offset
+					"SELECT id, start_number, ticket_count, current_offset, direction
 					 FROM {$table}
 					 WHERE product_id = %d AND current_offset < ticket_count
 					 ORDER BY sort_order ASC, id ASC
@@ -90,6 +90,7 @@ class RollRepository {
 				'start_number' => (int) $roll->start_number,
 				'ticket_count' => (int) $roll->ticket_count,
 				'offset'       => $offset, // 1-based: offset 1 = start_number.
+				'direction'    => ( isset( $roll->direction ) && 'desc' === $roll->direction ) ? 'desc' : 'asc',
 			);
 		}
 

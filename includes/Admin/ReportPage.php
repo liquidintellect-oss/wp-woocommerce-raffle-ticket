@@ -167,8 +167,11 @@ class ReportPage {
 
 		// Fetch all eligible orders oldest-first so ticket numbers are
 		// assigned in chronological order when multiple orders are processed.
+		// 'type' => 'shop_order' excludes refunds, which do not have customer
+		// meta and would cause a fatal error inside OrderHandler::handle().
 		$orders = wc_get_orders(
 			array(
+				'type'    => 'shop_order',
 				'status'  => array( 'processing', 'completed' ),
 				'limit'   => -1,
 				'orderby' => 'date',
@@ -201,25 +204,44 @@ class ReportPage {
 
 		$assigned = 0;
 
-		foreach ( $orders as $order ) {
-			$order_id = (int) $order->get_id();
-
-			if ( $overwrite ) {
-				// Overwrite mode: capture how many assigned slots each roll holds for
-				// this order, return those slots, then delete the tickets so that
-				// handle() re-claims them from the correct offset on this roll.
+		if ( $overwrite ) {
+			// Overwrite mode — must batch all deletes before any re-assignment so
+			// that re-claimed slot numbers don't collide with tickets still held
+			// by orders that haven't been processed yet in the same run.
+			//
+			// Phase 1: delete every order's tickets and accumulate roll decrements.
+			$roll_decrements = array();
+			foreach ( $orders as $order ) {
+				$order_id    = (int) $order->get_id();
 				$roll_counts = $this->ticket_repo->findRollCountsForOrder( $order_id );
 				$this->ticket_repo->deleteAllForOrder( $order_id );
 				foreach ( $roll_counts as $roll_id => $count ) {
-					$this->roll_repo->decrementOffset( $roll_id, $count );
+					$roll_decrements[ $roll_id ] = ( $roll_decrements[ $roll_id ] ?? 0 ) + $count;
 				}
-			} elseif ( $this->ticket_repo->hasAssignedTicketsForOrder( $order_id ) ) {
-				// Normal mode: skip orders that already have assigned tickets.
-				continue;
 			}
 
-			$this->order_handler->handle( $order_id );
-			++$assigned;
+			// Phase 2: apply the aggregated decrements once all tickets are gone.
+			foreach ( $roll_decrements as $roll_id => $total ) {
+				$this->roll_repo->decrementOffset( $roll_id, $total );
+			}
+
+			// Phase 3: re-assign tickets for all orders in chronological order.
+			foreach ( $orders as $order ) {
+				$this->order_handler->handle( (int) $order->get_id() );
+				++$assigned;
+			}
+		} else {
+			foreach ( $orders as $order ) {
+				$order_id = (int) $order->get_id();
+
+				// Normal mode: skip orders that already have assigned tickets.
+				if ( $this->ticket_repo->hasAssignedTicketsForOrder( $order_id ) ) {
+					continue;
+				}
+
+				$this->order_handler->handle( $order_id );
+				++$assigned;
+			}
 		}
 
 		wp_safe_redirect(

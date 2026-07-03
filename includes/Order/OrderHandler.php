@@ -66,7 +66,7 @@ class OrderHandler {
 		}
 
 		$order = wc_get_order( $order_id );
-		if ( ! $order ) {
+		if ( ! $order || ! $order instanceof \WC_Order || $order instanceof \WC_Order_Refund ) {
 			return;
 		}
 
@@ -106,7 +106,8 @@ class OrderHandler {
 						$slot['start_number'],
 						$slot['ticket_count'],
 						$slot['offset'],
-						0
+						0,
+						$slot['direction'] ?? 'asc'
 					);
 					$ticket = $this->generator->generate( $settings->getPrefix(), $roll, $slot['offset'] );
 					$this->ticket_repo->save(

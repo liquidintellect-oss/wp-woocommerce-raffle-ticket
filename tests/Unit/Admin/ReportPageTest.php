@@ -791,17 +791,18 @@ class ReportPageTest extends TestCase {
 			->method( 'findRollCountsForOrder' )
 			->willReturn( array( 7 => 3 ) ); // roll 7 had 3 tickets per order.
 
-		// deleteAllForOrder must be called once per order.
+		// deleteAllForOrder must be called once per order (phase 1, before re-assignment).
 		$this->ticket_repo
 			->expects( $this->exactly( 2 ) )
 			->method( 'deleteAllForOrder' )
 			->withConsecutive( array( 10 ), array( 20 ) );
 
-		// decrementOffset must be called for each roll returned by findRollCountsForOrder.
+		// decrementOffset is called once with the AGGREGATED count across all orders
+		// (3 tickets/order × 2 orders = 6 total for roll 7) after all deletes complete.
 		$this->roll_repo
-			->expects( $this->exactly( 2 ) )
+			->expects( $this->once() )
 			->method( 'decrementOffset' )
-			->with( 7, 3 );
+			->with( 7, 6 );
 
 		// hasAssignedTicketsForOrder must NOT be consulted in overwrite mode.
 		$this->ticket_repo
