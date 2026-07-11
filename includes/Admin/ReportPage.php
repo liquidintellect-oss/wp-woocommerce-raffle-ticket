@@ -167,8 +167,11 @@ class ReportPage {
 
 		// Fetch all eligible orders oldest-first so ticket numbers are
 		// assigned in chronological order when multiple orders are processed.
+		// 'type' => 'shop_order' excludes refunds, which do not have customer
+		// meta and would cause a fatal error inside OrderHandler::handle().
 		$orders = wc_get_orders(
 			array(
+				'type'    => 'shop_order',
 				'status'  => array( 'processing', 'completed' ),
 				'limit'   => -1,
 				'orderby' => 'date',
@@ -201,25 +204,44 @@ class ReportPage {
 
 		$assigned = 0;
 
-		foreach ( $orders as $order ) {
-			$order_id = (int) $order->get_id();
-
-			if ( $overwrite ) {
-				// Overwrite mode: capture how many assigned slots each roll holds for
-				// this order, return those slots, then delete the tickets so that
-				// handle() re-claims them from the correct offset on this roll.
+		if ( $overwrite ) {
+			// Overwrite mode — must batch all deletes before any re-assignment so
+			// that re-claimed slot numbers don't collide with tickets still held
+			// by orders that haven't been processed yet in the same run.
+			//
+			// Phase 1: delete every order's tickets and accumulate roll decrements.
+			$roll_decrements = array();
+			foreach ( $orders as $order ) {
+				$order_id    = (int) $order->get_id();
 				$roll_counts = $this->ticket_repo->findRollCountsForOrder( $order_id );
 				$this->ticket_repo->deleteAllForOrder( $order_id );
 				foreach ( $roll_counts as $roll_id => $count ) {
-					$this->roll_repo->decrementOffset( $roll_id, $count );
+					$roll_decrements[ $roll_id ] = ( $roll_decrements[ $roll_id ] ?? 0 ) + $count;
 				}
-			} elseif ( $this->ticket_repo->hasAssignedTicketsForOrder( $order_id ) ) {
-				// Normal mode: skip orders that already have assigned tickets.
-				continue;
 			}
 
-			$this->order_handler->handle( $order_id );
-			++$assigned;
+			// Phase 2: apply the aggregated decrements once all tickets are gone.
+			foreach ( $roll_decrements as $roll_id => $total ) {
+				$this->roll_repo->decrementOffset( $roll_id, $total );
+			}
+
+			// Phase 3: re-assign tickets for all orders in chronological order.
+			foreach ( $orders as $order ) {
+				$this->order_handler->handle( (int) $order->get_id() );
+				++$assigned;
+			}
+		} else {
+			foreach ( $orders as $order ) {
+				$order_id = (int) $order->get_id();
+
+				// Normal mode: skip orders that already have assigned tickets.
+				if ( $this->ticket_repo->hasAssignedTicketsForOrder( $order_id ) ) {
+					continue;
+				}
+
+				$this->order_handler->handle( $order_id );
+				++$assigned;
+			}
 		}
 
 		wp_safe_redirect(
@@ -272,9 +294,13 @@ class ReportPage {
 		$sort_order   = isset( $_POST['roll_sort_order'] )
 			? absint( wp_unslash( $_POST['roll_sort_order'] ) ) // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 			: 0;
+		$raw_dir      = isset( $_POST['roll_direction'] ) // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			? sanitize_key( wp_unslash( $_POST['roll_direction'] ) ) // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			: 'asc';
+		$direction    = ( 'desc' === $raw_dir ) ? 'desc' : 'asc';
 
 		if ( $product_id > 0 && $ticket_count > 0 ) {
-			$this->roll_repo->create( $product_id, $label, $start_number, $ticket_count, $sort_order );
+			$this->roll_repo->create( $product_id, $label, $start_number, $ticket_count, $sort_order, $direction );
 		}
 
 		wp_safe_redirect(
@@ -613,6 +639,7 @@ class ReportPage {
 				<tr>
 					<th><?php esc_html_e( 'Product', 'wp-woocommerce-raffle-ticket' ); ?></th>
 					<th><?php esc_html_e( 'Label', 'wp-woocommerce-raffle-ticket' ); ?></th>
+					<th><?php esc_html_e( 'Direction', 'wp-woocommerce-raffle-ticket' ); ?></th>
 					<th><?php esc_html_e( 'Start #', 'wp-woocommerce-raffle-ticket' ); ?></th>
 					<th><?php esc_html_e( 'Count', 'wp-woocommerce-raffle-ticket' ); ?></th>
 					<th><?php esc_html_e( 'Last #', 'wp-woocommerce-raffle-ticket' ); ?></th>
@@ -625,7 +652,10 @@ class ReportPage {
 			<tbody>
 			<?php foreach ( $rolls as $row ) : ?>
 				<?php
-				$last_number = (int) $row->start_number + (int) $row->ticket_count - 1;
+				$is_desc     = isset( $row->direction ) && 'desc' === $row->direction;
+				$last_number = $is_desc
+					? (int) $row->start_number - (int) $row->ticket_count + 1
+					: (int) $row->start_number + (int) $row->ticket_count - 1;
 				$remaining   = max( 0, (int) $row->ticket_count - (int) $row->current_offset );
 				$delete_url  = wp_nonce_url(
 					add_query_arg(
@@ -642,6 +672,7 @@ class ReportPage {
 				<tr>
 					<td><?php echo esc_html( $row->product_name ?? '' ); ?></td>
 					<td><?php echo esc_html( $row->label ?? '' ); ?></td>
+					<td><?php echo esc_html( $is_desc ? __( 'Descending', 'wp-woocommerce-raffle-ticket' ) : __( 'Ascending', 'wp-woocommerce-raffle-ticket' ) ); ?></td>
 					<td><?php echo esc_html( (string) $row->start_number ); ?></td>
 					<td><?php echo esc_html( (string) $row->ticket_count ); ?></td>
 					<td><?php echo esc_html( (string) $last_number ); ?></td>
@@ -765,6 +796,25 @@ class ReportPage {
 						/>
 						<p class="description">
 							<?php esc_html_e( 'Lower numbers are consumed first. Rolls with the same sort order are consumed in creation order.', 'wp-woocommerce-raffle-ticket' ); ?>
+						</p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row">
+						<?php esc_html_e( 'Direction', 'wp-woocommerce-raffle-ticket' ); ?>
+					</th>
+					<td>
+						<label>
+							<input type="radio" name="roll_direction" value="asc" checked />
+							<?php esc_html_e( 'Ascending — ticket numbers increase (e.g. 1, 2, 3…)', 'wp-woocommerce-raffle-ticket' ); ?>
+						</label>
+						<br />
+						<label>
+							<input type="radio" name="roll_direction" value="desc" />
+							<?php esc_html_e( 'Descending — ticket numbers decrease (e.g. 1000, 999, 998…)', 'wp-woocommerce-raffle-ticket' ); ?>
+						</label>
+						<p class="description">
+							<?php esc_html_e( 'Choose Descending when the highest number on the roll is unwound first.', 'wp-woocommerce-raffle-ticket' ); ?>
 						</p>
 					</td>
 				</tr>

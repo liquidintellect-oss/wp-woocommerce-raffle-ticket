@@ -20,6 +20,10 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * The current_offset tracks how many tickets from this roll have been claimed
  * (0 = untouched, ticket_count = fully exhausted).
+ *
+ * The direction field controls whether ticket numbers increment ('asc') or
+ * decrement ('desc') as the roll is consumed.  Physical rolls wound from the
+ * highest number down require 'desc'.
  */
 class TicketRoll {
 
@@ -33,6 +37,7 @@ class TicketRoll {
 	 * @param int    $ticket_count   Total tickets on the roll.
 	 * @param int    $current_offset Number of tickets already claimed (0-based).
 	 * @param int    $sort_order     Admin-defined consumption order (lower = first).
+	 * @param string $direction      'asc' (numbers increase) or 'desc' (numbers decrease).
 	 */
 	public function __construct(
 		private int $id,
@@ -41,7 +46,8 @@ class TicketRoll {
 		private int $start_number,
 		private int $ticket_count,
 		private int $current_offset,
-		private int $sort_order
+		private int $sort_order,
+		private string $direction = 'asc'
 	) {}
 
 	/**
@@ -108,11 +114,35 @@ class TicketRoll {
 	}
 
 	/**
+	 * Get the direction in which ticket numbers run ('asc' or 'desc').
+	 *
+	 * @return string
+	 */
+	public function getDirection(): string {
+		return $this->direction;
+	}
+
+	/**
+	 * Whether this roll counts downward (highest number first).
+	 *
+	 * @return bool
+	 */
+	public function isDescending(): bool {
+		return 'desc' === $this->direction;
+	}
+
+	/**
 	 * Get the last printed number on the roll (inclusive).
+	 *
+	 * For ascending rolls this is start_number + ticket_count - 1.
+	 * For descending rolls this is start_number - ticket_count + 1.
 	 *
 	 * @return int
 	 */
 	public function getLastNumber(): int {
+		if ( $this->isDescending() ) {
+			return $this->start_number - $this->ticket_count + 1;
+		}
 		return $this->start_number + $this->ticket_count - 1;
 	}
 

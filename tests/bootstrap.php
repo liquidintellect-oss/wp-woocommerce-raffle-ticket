@@ -130,6 +130,14 @@ if ( ! class_exists( 'WC_Order' ) ) {
 	class WC_Order {}
 }
 
+if ( ! class_exists( 'WC_Order_Refund' ) ) {
+	/**
+	 * Minimal WC_Order_Refund stub for tests.
+	 * Extends WC_Order so the instanceof check in OrderHandler works correctly.
+	 */
+	class WC_Order_Refund extends WC_Order {}
+}
+
 // ── WP_Mock bootstrap ────────────────────────────────────────────────────────
 
 WP_Mock::bootstrap();

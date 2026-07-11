@@ -20,11 +20,12 @@ if ( ! defined( 'ABSPATH' ) ) {
  *   1.0.0 — raffle_tickets + raffle_ticket_sequences tables.
  *   1.1.0 — raffle_ticket_rolls table; roll_id column on raffle_tickets;
  *            raffle_ticket_sequences table retained for schema compatibility.
+ *   1.2.0 — direction column on raffle_ticket_rolls ('asc'|'desc', default 'asc').
  */
 class Installer {
 
 	/** Current schema version. */
-	const DB_VERSION = '1.1.0';
+	const DB_VERSION = '1.2.0';
 
 	/** WordPress option key that stores the installed schema version. */
 	const DB_VERSION_OPTION = 'wrt_db_version';
@@ -95,6 +96,7 @@ class Installer {
 			ticket_count INT UNSIGNED NOT NULL,
 			current_offset INT UNSIGNED NOT NULL DEFAULT 0,
 			sort_order INT UNSIGNED NOT NULL DEFAULT 0,
+			direction VARCHAR(4) NOT NULL DEFAULT 'asc',
 			created_at DATETIME NOT NULL,
 			PRIMARY KEY (id),
 			KEY product_id_sort (product_id, sort_order, id)

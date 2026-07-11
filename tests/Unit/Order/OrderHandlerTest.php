@@ -138,6 +138,20 @@ class OrderHandlerTest extends TestCase {
 	}
 
 	/** @test */
+	public function handle_returns_early_when_order_is_a_refund(): void {
+		$this->ticket_repo->method( 'hasAssignedTicketsForOrder' )->willReturn( false );
+
+		// wc_get_order returns a refund object.
+		$refund = $this->createMock( \WC_Order_Refund::class );
+		WP_Mock::userFunction( 'wc_get_order', array( 'return' => $refund ) );
+
+		$this->ticket_repo->expects( $this->never() )->method( 'save' );
+		$this->ticket_repo->expects( $this->never() )->method( 'saveUnassigned' );
+
+		$this->handler->handle( 1 );
+	}
+
+	/** @test */
 	public function handle_assigns_one_ticket_per_unit_of_quantity(): void {
 		$item  = new WcOrderItemStub( 10, 3, 'Raffle Product' ); // qty = 3.
 		$order = new WcOrderStub( 1, 5, array( 99 => $item ) );
@@ -148,7 +162,7 @@ class OrderHandlerTest extends TestCase {
 		WP_Mock::userFunction( 'wc_get_order', array( 'return' => $order ) );
 		$this->mockProductMeta( 10, true, 'R-' );
 
-		$slot = array( 'roll_id' => 1, 'start_number' => 1, 'ticket_count' => 100, 'offset' => 1 );
+		$slot = array( 'roll_id' => 1, 'start_number' => 1, 'ticket_count' => 100, 'offset' => 1, 'direction' => 'asc' );
 		$this->roll_repo->method( 'nextTicket' )->willReturn( $slot );
 
 		$ticket = new TicketNumber( 'R-', 1, 'R-001' );
@@ -192,7 +206,7 @@ class OrderHandlerTest extends TestCase {
 		WP_Mock::userFunction( 'wc_get_order', array( 'return' => $order ) );
 		$this->mockProductMeta( 10, true, 'R-' );
 
-		$slot = array( 'roll_id' => 7, 'start_number' => 1001, 'ticket_count' => 500, 'offset' => 1 );
+		$slot = array( 'roll_id' => 7, 'start_number' => 1001, 'ticket_count' => 500, 'offset' => 1, 'direction' => 'asc' );
 		$this->roll_repo->method( 'nextTicket' )->willReturn( $slot );
 
 		$ticket = new TicketNumber( 'R-', 1001, 'R-1001' );

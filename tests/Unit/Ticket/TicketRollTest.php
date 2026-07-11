@@ -12,14 +12,15 @@ class TicketRollTest extends TestCase {
 		int $id = 1,
 		int $product_id = 10,
 		string $label = 'Roll A',
-		int $sort_order = 0
+		int $sort_order = 0,
+		string $direction = 'asc'
 	): TicketRoll {
-		return new TicketRoll( $id, $product_id, $label, $start_number, $ticket_count, $current_offset, $sort_order );
+		return new TicketRoll( $id, $product_id, $label, $start_number, $ticket_count, $current_offset, $sort_order, $direction );
 	}
 
 	/** @test */
 	public function getters_return_constructor_values(): void {
-		$roll = new TicketRoll( 5, 10, 'Test Roll', 1001, 500, 42, 3 );
+		$roll = new TicketRoll( 5, 10, 'Test Roll', 1001, 500, 42, 3, 'asc' );
 
 		$this->assertSame( 5, $roll->getId() );
 		$this->assertSame( 10, $roll->getProductId() );
@@ -28,6 +29,23 @@ class TicketRollTest extends TestCase {
 		$this->assertSame( 500, $roll->getTicketCount() );
 		$this->assertSame( 42, $roll->getCurrentOffset() );
 		$this->assertSame( 3, $roll->getSortOrder() );
+		$this->assertSame( 'asc', $roll->getDirection() );
+	}
+
+	/** @test */
+	public function get_direction_defaults_to_asc(): void {
+		$roll = new TicketRoll( 1, 10, 'Roll A', 1, 100, 0, 0 );
+
+		$this->assertSame( 'asc', $roll->getDirection() );
+		$this->assertFalse( $roll->isDescending() );
+	}
+
+	/** @test */
+	public function get_direction_returns_desc_when_set(): void {
+		$roll = new TicketRoll( 1, 10, 'Roll A', 1000, 100, 0, 0, 'desc' );
+
+		$this->assertSame( 'desc', $roll->getDirection() );
+		$this->assertTrue( $roll->isDescending() );
 	}
 
 	/** @test */
@@ -42,6 +60,22 @@ class TicketRollTest extends TestCase {
 	public function get_last_number_single_ticket_roll(): void {
 		// start=42, count=1 → last=42.
 		$roll = $this->makeRoll( 42, 1 );
+
+		$this->assertSame( 42, $roll->getLastNumber() );
+	}
+
+	/** @test */
+	public function get_last_number_descending_is_start_minus_count_plus_one(): void {
+		// start=1000, count=500 → last=501.
+		$roll = $this->makeRoll( 1000, 500, 0, 1, 10, 'Roll A', 0, 'desc' );
+
+		$this->assertSame( 501, $roll->getLastNumber() );
+	}
+
+	/** @test */
+	public function get_last_number_descending_single_ticket_roll(): void {
+		// start=42, count=1 → last=42 regardless of direction.
+		$roll = $this->makeRoll( 42, 1, 0, 1, 10, 'Roll A', 0, 'desc' );
 
 		$this->assertSame( 42, $roll->getLastNumber() );
 	}

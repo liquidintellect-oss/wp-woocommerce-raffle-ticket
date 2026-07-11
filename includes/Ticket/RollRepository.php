@@ -50,7 +50,7 @@ class RollRepository {
 			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$roll = $wpdb->get_row(
 				$wpdb->prepare(
-					"SELECT id, start_number, ticket_count, current_offset
+					"SELECT id, start_number, ticket_count, current_offset, direction
 					 FROM {$table}
 					 WHERE product_id = %d AND current_offset < ticket_count
 					 ORDER BY sort_order ASC, id ASC
@@ -90,6 +90,7 @@ class RollRepository {
 				'start_number' => (int) $roll->start_number,
 				'ticket_count' => (int) $roll->ticket_count,
 				'offset'       => $offset, // 1-based: offset 1 = start_number.
+				'direction'    => ( isset( $roll->direction ) && 'desc' === $roll->direction ) ? 'desc' : 'asc',
 			);
 		}
 
@@ -183,13 +184,16 @@ class RollRepository {
 	 * @param int    $start_number First printed ticket number.
 	 * @param int    $ticket_count Total tickets on the roll.
 	 * @param int    $sort_order   Consumption order (lower = first).
+	 * @param string $direction    'asc' (numbers increase) or 'desc' (numbers decrease).
 	 *
 	 * @return int The new roll's database ID.
 	 *
 	 * @global \wpdb $wpdb WordPress database abstraction object.
 	 */
-	public function create( int $product_id, string $label, int $start_number, int $ticket_count, int $sort_order ): int {
+	public function create( int $product_id, string $label, int $start_number, int $ticket_count, int $sort_order, string $direction = 'asc' ): int {
 		global $wpdb;
+
+		$safe_direction = ( 'desc' === $direction ) ? 'desc' : 'asc';
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
 		$wpdb->insert(
@@ -201,9 +205,10 @@ class RollRepository {
 				'ticket_count'   => $ticket_count,
 				'current_offset' => 0,
 				'sort_order'     => $sort_order,
+				'direction'      => $safe_direction,
 				'created_at'     => current_time( 'mysql' ),
 			),
-			array( '%d', '%s', '%d', '%d', '%d', '%d', '%s' )
+			array( '%d', '%s', '%d', '%d', '%d', '%d', '%s', '%s' )
 		);
 
 		return (int) $wpdb->insert_id;
@@ -273,6 +278,8 @@ class RollRepository {
 	 * @return TicketRoll
 	 */
 	private function rowToTicketRoll( object $row ): TicketRoll {
+		$direction = isset( $row->direction ) && 'desc' === $row->direction ? 'desc' : 'asc';
+
 		return new TicketRoll(
 			(int) $row->id,
 			(int) $row->product_id,
@@ -280,7 +287,8 @@ class RollRepository {
 			(int) $row->start_number,
 			(int) $row->ticket_count,
 			(int) $row->current_offset,
-			(int) $row->sort_order
+			(int) $row->sort_order,
+			$direction
 		);
 	}
 }
